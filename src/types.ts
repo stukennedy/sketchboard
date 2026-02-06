@@ -10,6 +10,16 @@ export interface Point {
   y: number;
 }
 
+export type AnchorPosition = 'top' | 'bottom' | 'left' | 'right' | 'center' | 'auto';
+
+export interface Binding {
+  shapeId: string;
+  anchor: AnchorPosition;
+  // Offset from anchor point (for fine-tuning)
+  offsetX?: number;
+  offsetY?: number;
+}
+
 export interface BaseShape {
   id: string;
   type: ShapeType;
@@ -50,8 +60,8 @@ export interface LineShape extends BaseShape {
 export interface ArrowShape extends BaseShape {
   type: 'arrow';
   points: Point[];
-  startBinding?: string; // shape id
-  endBinding?: string;   // shape id
+  startBinding?: Binding | string; // Binding object or shape id (legacy)
+  endBinding?: Binding | string;   // Binding object or shape id (legacy)
   curved?: boolean;      // use bezier curves
   dashed?: boolean;      // dashed line
   arrowHead?: 'arrow' | 'triangle' | 'diamond' | 'circle' | 'none';

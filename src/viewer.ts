@@ -401,12 +401,47 @@ export function renderViewer(canvasId: string, wsUrl: string, darkMode: boolean 
       }
     };
     
+    // Convert screen coords to canvas coords
+    function screenToCanvas(screenX, screenY) {
+      const rect = canvasContainer.getBoundingClientRect();
+      const svg = svgContainer.querySelector('svg');
+      if (!svg) return { x: 0, y: 0 };
+      
+      // Get container center (transform origin)
+      const centerX = rect.width / 2;
+      const centerY = rect.height / 2;
+      
+      // Mouse position relative to container
+      const relX = screenX - rect.left;
+      const relY = screenY - rect.top;
+      
+      // Account for pan and zoom (transform origin is center)
+      const transformedX = (relX - centerX - panX) / zoom + centerX;
+      const transformedY = (relY - centerY - panY) / zoom + centerY;
+      
+      // Map to SVG viewBox coordinates
+      const vb = svg.getAttribute('viewBox')?.split(' ').map(Number);
+      if (!vb || vb.length !== 4) return { x: transformedX, y: transformedY };
+      
+      const [vbX, vbY, vbW, vbH] = vb;
+      const svgRect = svg.getBoundingClientRect();
+      
+      // Calculate how SVG is scaled/positioned within its container
+      const scaleX = vbW / rect.width;
+      const scaleY = vbH / rect.height;
+      const scale = Math.max(scaleX, scaleY); // preserveAspectRatio: meet
+      
+      const canvasX = vbX + transformedX * scale;
+      const canvasY = vbY + transformedY * scale;
+      
+      return { x: canvasX, y: canvasY };
+    }
+    
     // Find shape at position
-    function findShapeAt(x, y) {
+    function findShapeAt(screenX, screenY) {
       if (!canvasState) return null;
-      // Transform click coords to canvas coords
-      const cx = (x - panX) / zoom;
-      const cy = (y - panY) / zoom;
+      
+      const { x: cx, y: cy } = screenToCanvas(screenX, screenY);
       
       // Check shapes in reverse order (top to bottom)
       for (let i = canvasState.shapes.length - 1; i >= 0; i--) {
@@ -415,11 +450,78 @@ export function renderViewer(canvasId: string, wsUrl: string, darkMode: boolean 
         
         const w = s.width || 100;
         const h = s.height || 50;
-        if (cx >= s.x && cx <= s.x + w && cy >= s.y && cy <= s.y + h) {
+        // Add some padding for easier selection
+        const padding = 10;
+        if (cx >= s.x - padding && cx <= s.x + w + padding && 
+            cy >= s.y - padding && cy <= s.y + h + padding) {
           return s;
         }
       }
       return null;
+    }
+    
+    // Get anchor point on a shape
+    function getAnchorPoint(shape, anchor) {
+      const w = shape.width || 100;
+      const h = shape.height || 50;
+      const cx = shape.x + w / 2;
+      const cy = shape.y + h / 2;
+      
+      switch (anchor) {
+        case 'top': return { x: cx, y: shape.y };
+        case 'bottom': return { x: cx, y: shape.y + h };
+        case 'left': return { x: shape.x, y: cy };
+        case 'right': return { x: shape.x + w, y: cy };
+        case 'center': return { x: cx, y: cy };
+        default: return { x: cx, y: cy };
+      }
+    }
+    
+    // Update all arrows bound to a shape
+    function updateBoundArrows(movedShape) {
+      if (!canvasState) return [];
+      const updatedArrows = [];
+      
+      for (const shape of canvasState.shapes) {
+        if (shape.type !== 'arrow') continue;
+        
+        let updated = false;
+        const arrow = shape;
+        
+        // Check start binding
+        const startBinding = arrow.startBinding;
+        if (startBinding) {
+          const bindingId = typeof startBinding === 'string' ? startBinding : startBinding.shapeId;
+          if (bindingId === movedShape.id) {
+            const anchor = typeof startBinding === 'object' ? startBinding.anchor : 'auto';
+            const anchorPoint = getAnchorPoint(movedShape, anchor || 'auto');
+            if (arrow.points && arrow.points.length > 0) {
+              arrow.points[0] = anchorPoint;
+              updated = true;
+            }
+          }
+        }
+        
+        // Check end binding
+        const endBinding = arrow.endBinding;
+        if (endBinding) {
+          const bindingId = typeof endBinding === 'string' ? endBinding : endBinding.shapeId;
+          if (bindingId === movedShape.id) {
+            const anchor = typeof endBinding === 'object' ? endBinding.anchor : 'auto';
+            const anchorPoint = getAnchorPoint(movedShape, anchor || 'auto');
+            if (arrow.points && arrow.points.length > 0) {
+              arrow.points[arrow.points.length - 1] = anchorPoint;
+              updated = true;
+            }
+          }
+        }
+        
+        if (updated) {
+          updatedArrows.push(arrow);
+        }
+      }
+      
+      return updatedArrows;
     }
     
     // Highlight selected shape
@@ -446,23 +548,13 @@ export function renderViewer(canvasId: string, wsUrl: string, darkMode: boolean 
       svg.appendChild(rect);
     }
     
-    // Update shape position on server
-    async function updateShapePosition(shape) {
-      await fetch('/canvas/${canvasId}/draw', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'update',
-          shapes: [shape]
-        })
-      });
-    }
+    // Track shapes being updated during drag
+    let draggedArrows = [];
     
     // Edit mode mouse handlers
     canvasContainer.addEventListener('mousedown', (e) => {
       if (editMode) {
-        const rect = canvasContainer.getBoundingClientRect();
-        const shape = findShapeAt(e.clientX - rect.left, e.clientY - rect.top);
+        const shape = findShapeAt(e.clientX, e.clientY);
         if (shape) {
           selectedShape = shape;
           isDragging = true;
@@ -473,8 +565,8 @@ export function renderViewer(canvasId: string, wsUrl: string, darkMode: boolean 
           return;
         }
       }
-      // Normal pan behavior
-      if (!editMode && (e.button === 0 || e.button === 1)) {
+      // Normal pan behavior (also allow in edit mode with right click or no shape)
+      if (e.button === 0 || e.button === 1) {
         isPanning = true;
         startX = e.clientX - panX;
         startY = e.clientY - panY;
@@ -484,12 +576,29 @@ export function renderViewer(canvasId: string, wsUrl: string, darkMode: boolean 
     
     document.addEventListener('mousemove', (e) => {
       if (isDragging && selectedShape) {
-        const dx = (e.clientX - dragStartX) / zoom;
-        const dy = (e.clientY - dragStartY) / zoom;
+        // Convert screen delta to canvas delta
+        const rect = canvasContainer.getBoundingClientRect();
+        const svg = svgContainer.querySelector('svg');
+        const vb = svg?.getAttribute('viewBox')?.split(' ').map(Number);
+        
+        // Calculate scale factor
+        let scale = 1;
+        if (vb && vb.length === 4) {
+          const vbW = vb[2], vbH = vb[3];
+          scale = Math.max(vbW / rect.width, vbH / rect.height);
+        }
+        
+        const dx = ((e.clientX - dragStartX) / zoom) * scale;
+        const dy = ((e.clientY - dragStartY) / zoom) * scale;
+        
         selectedShape.x += dx;
         selectedShape.y += dy;
         dragStartX = e.clientX;
         dragStartY = e.clientY;
+        
+        // Update bound arrows
+        draggedArrows = updateBoundArrows(selectedShape);
+        
         loadSvg().then(() => highlightShape(selectedShape));
       } else if (isPanning) {
         panX = e.clientX - startX;
@@ -498,10 +607,20 @@ export function renderViewer(canvasId: string, wsUrl: string, darkMode: boolean 
       }
     });
     
-    document.addEventListener('mouseup', () => {
+    document.addEventListener('mouseup', async () => {
       if (isDragging && selectedShape) {
-        updateShapePosition(selectedShape);
+        // Update moved shape and all bound arrows in one request
+        const shapesToUpdate = [selectedShape, ...draggedArrows];
+        await fetch('/canvas/${canvasId}/draw', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'update',
+            shapes: shapesToUpdate
+          })
+        });
         isDragging = false;
+        draggedArrows = [];
       }
       isPanning = false;
       canvasContainer.style.cursor = editMode ? 'crosshair' : 'grab';
