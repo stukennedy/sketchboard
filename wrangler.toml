@@ -1,0 +1,15 @@
+name = "sketchboard"
+main = "src/index.ts"
+compatibility_date = "2025-01-01"
+
+[durable_objects]
+bindings = [
+  { name = "CANVAS", class_name = "CanvasDO" }
+]
+
+[[migrations]]
+tag = "v1"
+new_classes = ["CanvasDO"]
+
+[vars]
+ENVIRONMENT = "development"

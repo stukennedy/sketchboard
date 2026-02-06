@@ -1,0 +1,23 @@
+{
+  "name": "sketchboard",
+  "version": "0.1.0",
+  "description": "Hand-drawn diagram server with Rough.js - controllable by AI agents",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "types": "wrangler types"
+  },
+  "dependencies": {
+    "hono": "^4.7.4",
+    "roughjs": "^4.6.6"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250109.0",
+    "typescript": "^5.7.3",
+    "wrangler": "^3.105.0"
+  },
+  "imports": {
+    "@/*": "./src/*"
+  }
+}
