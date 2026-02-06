@@ -85,12 +85,36 @@ app.get('/', (c) => {
   
   <h2>Shape Types</h2>
   <pre>
-rectangle: { x, y, width, height, label?, strokeColor?, fillColor? }
-ellipse:   { x, y, width, height, label?, strokeColor?, fillColor? }
-diamond:   { x, y, width, height, label?, strokeColor?, fillColor? }
-line:      { x, y, points: [{x,y}, ...], strokeColor? }
-arrow:     { x, y, points: [{x,y}, ...], strokeColor? }
-text:      { x, y, text, fontSize?, strokeColor? }
+// Box shapes (all support label)
+rectangle: { x, y, width, height, label?, fillColor? }
+ellipse:   { x, y, width, height, label?, fillColor? }
+diamond:   { x, y, width, height, label?, fillColor? }
+cylinder:  { x, y, width, height, label?, fillColor? }  // Database
+cloud:     { x, y, width, height, label?, fillColor? }  // External
+hexagon:   { x, y, width, height, label?, fillColor? }  // Process
+document:  { x, y, width, height, label?, fillColor? }  // Document
+person:    { x, y, width, height, label?, fillColor? }  // Stick figure
+callout:   { x, y, width, height, label?, pointerX?, pointerY? }
+
+// Lines
+line:  { x, y, points: [{x,y}, ...] }
+arrow: { x, y, points, startBinding?, endBinding?, curved?, dashed?, 
+         arrowHead?, arrowTail?, label?, labelPosition? }
+
+// Text
+text: { x, y, text, fontSize? }
+  </pre>
+  
+  <h2>Arrow Bindings</h2>
+  <p>Arrows can bind to shapes — they stay connected when shapes move:</p>
+  <pre>
+{
+  "startBinding": { "shapeId": "box1", "anchor": "right" },
+  "endBinding": { "shapeId": "box2", "anchor": "left" }
+}
+
+// Anchors: top, bottom, left, right, center, auto
+// Arrow styles: curved, dashed, arrowHead/arrowTail (arrow|triangle|diamond|circle|none)
   </pre>
   
   <h2>Example: Architecture Diagram</h2>
