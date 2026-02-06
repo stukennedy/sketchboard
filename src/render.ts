@@ -341,7 +341,7 @@ function renderShape(shape: Shape, rand: () => number, roughness: number = 1, da
         const cx = shape.x + shape.width / 2;
         const cy = shape.y + shape.height / 2;
         const fontSize = calcFontSize(shape.label, shape.width, shape.height);
-        svg += renderMultilineText(cx, cy, shape.label, fontSize, stroke);
+        svg += renderMultilineText(cx, cy, shape.label, fontSize, stroke, cleanStyle);
       }
       return svg;
     }
@@ -356,7 +356,7 @@ function renderShape(shape: Shape, rand: () => number, roughness: number = 1, da
       }
       if (shape.label) {
         const fontSize = calcFontSize(shape.label, shape.width * 0.8, shape.height * 0.8);
-        svg += renderMultilineText(cx, cy, shape.label, fontSize, stroke);
+        svg += renderMultilineText(cx, cy, shape.label, fontSize, stroke, cleanStyle);
       }
       return svg;
     }
@@ -374,7 +374,7 @@ function renderShape(shape: Shape, rand: () => number, roughness: number = 1, da
         const cx = shape.x + shape.width / 2;
         const cy = shape.y + shape.height / 2;
         const fontSize = calcFontSize(shape.label, shape.width * 0.6, shape.height * 0.6);
-        svg += renderMultilineText(cx, cy, shape.label, fontSize, stroke);
+        svg += renderMultilineText(cx, cy, shape.label, fontSize, stroke, cleanStyle);
       }
       return svg;
     }
@@ -444,7 +444,7 @@ function renderShape(shape: Shape, rand: () => number, roughness: number = 1, da
         const cx = shape.x + shape.width / 2;
         const cy = shape.y + shape.height / 2;
         const fontSize = calcFontSize(shape.label, shape.width * 0.8, shape.height * 0.5);
-        svg += renderMultilineText(cx, cy, shape.label, fontSize, stroke);
+        svg += renderMultilineText(cx, cy, shape.label, fontSize, stroke, cleanStyle);
       }
       return svg;
     }
@@ -460,7 +460,7 @@ function renderShape(shape: Shape, rand: () => number, roughness: number = 1, da
         const cx = shape.x + shape.width / 2;
         const cy = shape.y + shape.height / 2;
         const fontSize = calcFontSize(shape.label, shape.width * 0.6, shape.height * 0.5);
-        svg += renderMultilineText(cx, cy, shape.label, fontSize, stroke);
+        svg += renderMultilineText(cx, cy, shape.label, fontSize, stroke, cleanStyle);
       }
       return svg;
     }
@@ -480,7 +480,7 @@ function renderShape(shape: Shape, rand: () => number, roughness: number = 1, da
         const cx = shape.x + shape.width / 2;
         const cy = shape.y + shape.height / 2;
         const fontSize = calcFontSize(shape.label, shape.width * 0.5, shape.height * 0.7);
-        svg += renderMultilineText(cx, cy, shape.label, fontSize, stroke);
+        svg += renderMultilineText(cx, cy, shape.label, fontSize, stroke, cleanStyle);
       }
       return svg;
     }
@@ -496,7 +496,7 @@ function renderShape(shape: Shape, rand: () => number, roughness: number = 1, da
         const cx = shape.x + shape.width / 2;
         const cy = shape.y + shape.height * 0.4;
         const fontSize = calcFontSize(shape.label, shape.width * 0.8, shape.height * 0.6);
-        svg += renderMultilineText(cx, cy, shape.label, fontSize, stroke);
+        svg += renderMultilineText(cx, cy, shape.label, fontSize, stroke, cleanStyle);
       }
       return svg;
     }
@@ -525,7 +525,7 @@ function renderShape(shape: Shape, rand: () => number, roughness: number = 1, da
         const cx = shape.x + shape.width / 2;
         const cy = shape.y + shape.height / 2;
         const fontSize = calcFontSize(shape.label, shape.width * 0.8, shape.height * 0.7);
-        svg += renderMultilineText(cx, cy, shape.label, fontSize, stroke);
+        svg += renderMultilineText(cx, cy, shape.label, fontSize, stroke, cleanStyle);
       }
       return svg;
     }
@@ -547,7 +547,7 @@ function renderCleanShape(shape: Shape, stroke: string, fill: string, strokeWidt
         const cx = shape.x + shape.width / 2;
         const cy = shape.y + shape.height / 2;
         const fontSize = calcFontSize(shape.label, shape.width, shape.height);
-        svg += renderMultilineText(cx, cy, shape.label, fontSize, stroke);
+        svg += renderMultilineText(cx, cy, shape.label, fontSize, stroke, cleanStyle);
       }
       return svg;
     }
@@ -558,7 +558,7 @@ function renderCleanShape(shape: Shape, stroke: string, fill: string, strokeWidt
       let svg = `<ellipse cx="${cx}" cy="${cy}" rx="${shape.width/2}" ry="${shape.height/2}" fill="${fill !== 'none' ? fill : 'none'}" ${style}/>`;
       if (shape.label) {
         const fontSize = calcFontSize(shape.label, shape.width * 0.8, shape.height * 0.8);
-        svg += renderMultilineText(cx, cy, shape.label, fontSize, stroke);
+        svg += renderMultilineText(cx, cy, shape.label, fontSize, stroke, cleanStyle);
       }
       return svg;
     }
@@ -570,7 +570,7 @@ function renderCleanShape(shape: Shape, stroke: string, fill: string, strokeWidt
       let svg = `<polygon points="${points}" fill="${fill !== 'none' ? fill : 'none'}" ${style}/>`;
       if (shape.label) {
         const fontSize = calcFontSize(shape.label, shape.width * 0.6, shape.height * 0.6);
-        svg += renderMultilineText(cx, cy, shape.label, fontSize, stroke);
+        svg += renderMultilineText(cx, cy, shape.label, fontSize, stroke, cleanStyle);
       }
       return svg;
     }
@@ -677,7 +677,7 @@ function renderCleanShape(shape: Shape, stroke: string, fill: string, strokeWidt
       svg += `<ellipse cx="${cx}" cy="${shape.y + shape.height - ellipseH}" rx="${shape.width/2}" ry="${ellipseH}" fill="${fill !== 'none' ? fill : 'none'}" ${style}/>`;
       if (shape.label) {
         const fontSize = calcFontSize(shape.label, shape.width * 0.8, shape.height * 0.5);
-        svg += renderMultilineText(cx, shape.y + shape.height / 2, shape.label, fontSize, stroke);
+        svg += renderMultilineText(cx, shape.y + shape.height / 2, shape.label, fontSize, stroke, cleanStyle);
       }
       return svg;
     }
@@ -690,7 +690,7 @@ function renderCleanShape(shape: Shape, stroke: string, fill: string, strokeWidt
       let svg = `<polygon points="${points}" fill="${fill !== 'none' ? fill : 'none'}" ${style}/>`;
       if (shape.label) {
         const fontSize = calcFontSize(shape.label, shape.width * 0.5, shape.height * 0.7);
-        svg += renderMultilineText(cx, cy, shape.label, fontSize, stroke);
+        svg += renderMultilineText(cx, cy, shape.label, fontSize, stroke, cleanStyle);
       }
       return svg;
     }
@@ -710,7 +710,7 @@ function renderCleanShape(shape: Shape, stroke: string, fill: string, strokeWidt
       let svg = `<path d="${path}" fill="${fill !== 'none' ? fill : 'none'}" ${style}/>`;
       if (shape.label) {
         const fontSize = calcFontSize(shape.label, shape.width * 0.6, shape.height * 0.5);
-        svg += renderMultilineText(cx, cy, shape.label, fontSize, stroke);
+        svg += renderMultilineText(cx, cy, shape.label, fontSize, stroke, cleanStyle);
       }
       return svg;
     }
@@ -721,7 +721,7 @@ function renderCleanShape(shape: Shape, stroke: string, fill: string, strokeWidt
       let svg = `<path d="${path}" fill="${fill !== 'none' ? fill : 'none'}" ${style}/>`;
       if (shape.label) {
         const fontSize = calcFontSize(shape.label, shape.width * 0.8, shape.height * 0.6);
-        svg += renderMultilineText(shape.x + shape.width / 2, shape.y + shape.height * 0.4, shape.label, fontSize, stroke);
+        svg += renderMultilineText(shape.x + shape.width / 2, shape.y + shape.height * 0.4, shape.label, fontSize, stroke, cleanStyle);
       }
       return svg;
     }
@@ -749,7 +749,7 @@ function renderCleanShape(shape: Shape, stroke: string, fill: string, strokeWidt
       let svg = `<path d="${path}" fill="${fill !== 'none' ? fill : 'none'}" ${style}/>`;
       if (shape.label) {
         const fontSize = calcFontSize(shape.label, shape.width * 0.8, shape.height * 0.7);
-        svg += renderMultilineText(shape.x + shape.width / 2, shape.y + shape.height / 2, shape.label, fontSize, stroke);
+        svg += renderMultilineText(shape.x + shape.width / 2, shape.y + shape.height / 2, shape.label, fontSize, stroke, cleanStyle);
       }
       return svg;
     }
@@ -760,16 +760,17 @@ function renderCleanShape(shape: Shape, stroke: string, fill: string, strokeWidt
 }
 
 // Render multiline text centered
-function renderMultilineText(cx: number, cy: number, text: string, fontSize: number, fill: string, darkMode: boolean = false): string {
-  // For shape labels, use dark text on light fills, light text on dark fills
-  // Default fill is based on mode if not specified
+function renderMultilineText(cx: number, cy: number, text: string, fontSize: number, fill: string, cleanStyle: boolean = false): string {
   const lines = text.split('\n');
   const lineHeight = fontSize * 1.3;
   const totalHeight = lines.length * lineHeight;
   const startY = cy - totalHeight / 2 + lineHeight / 2;
   
+  // Use Inter for clean style, Virgil for rough/hand-drawn style
+  const fontFamily = cleanStyle ? 'Inter, -apple-system, sans-serif' : 'Virgil, Segoe UI Emoji, sans-serif';
+  
   return lines.map((line, i) => 
-    `<text x="${cx}" y="${startY + i * lineHeight}" text-anchor="middle" dominant-baseline="middle" font-family="Virgil, Segoe UI Emoji, sans-serif" font-size="${fontSize}" fill="${fill}">${escapeXml(line)}</text>`
+    `<text x="${cx}" y="${startY + i * lineHeight}" text-anchor="middle" dominant-baseline="middle" font-family="${fontFamily}" font-size="${fontSize}" fill="${fill}">${escapeXml(line)}</text>`
   ).join('');
 }
 
@@ -849,9 +850,16 @@ export function renderToSvg(state: CanvasState, options: RenderOptions = {}): st
     shapes += renderShape(shape, rand, roughness, darkMode, cleanStyle);
   }
   
+  // Background rect extends far beyond viewBox for infinite canvas feel
+  const bgPad = 10000;
+  const bgX = vx - bgPad;
+  const bgY = vy - bgPad;
+  const bgW = vw + bgPad * 2;
+  const bgH = vh + bgPad * 2;
+  
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="${vx} ${vy} ${vw} ${vh}">
-  <rect x="${vx}" y="${vy}" width="${vw}" height="${vh}" fill="${bgColor}"/>
+  <rect x="${bgX}" y="${bgY}" width="${bgW}" height="${bgH}" fill="${bgColor}"/>
   ${shapes}
 </svg>`;
 }
