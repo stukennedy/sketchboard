@@ -624,7 +624,44 @@ function renderCleanShape(shape: Shape, stroke: string, fill: string, strokeWidt
       const headPath = arrowHead(last.x, last.y, angle, 12, headStyle);
       const headFill = (headStyle === 'triangle' || headStyle === 'diamond') ? stroke : 'none';
       
-      return `<path d="${path}" fill="none" ${style}${dashStyle}/><path d="${headPath}" stroke="${stroke}" fill="${headFill}" stroke-width="${strokeWidth}"/>`;
+      let svg = `<path d="${path}" fill="none" ${style}${dashStyle}/><path d="${headPath}" stroke="${stroke}" fill="${headFill}" stroke-width="${strokeWidth}"/>`;
+      
+      // Arrow label - positioned along the path
+      if (shape.label) {
+        const labelPos = shape.labelPosition ?? 0.5; // Default to middle
+        let labelX: number, labelY: number;
+        
+        if (pts.length === 2) {
+          // Linear interpolation for 2-point arrows
+          labelX = pts[0].x + (pts[1].x - pts[0].x) * labelPos;
+          labelY = pts[0].y + (pts[1].y - pts[0].y) * labelPos;
+        } else if (pts.length >= 3 && labelPos === 0.5) {
+          // For multi-point arrows, middle label goes at the middle point (anchor)
+          const midIdx = Math.floor(pts.length / 2);
+          labelX = pts[midIdx].x;
+          labelY = pts[midIdx].y;
+        } else {
+          // Interpolate along the path
+          const totalIdx = (pts.length - 1) * labelPos;
+          const idx = Math.floor(totalIdx);
+          const t = totalIdx - idx;
+          const p1 = pts[Math.min(idx, pts.length - 1)];
+          const p2 = pts[Math.min(idx + 1, pts.length - 1)];
+          labelX = p1.x + (p2.x - p1.x) * t;
+          labelY = p1.y + (p2.y - p1.y) * t;
+        }
+        
+        // Apply offset if specified
+        if (shape.labelOffset) {
+          labelX += shape.labelOffset.x;
+          labelY += shape.labelOffset.y;
+        }
+        
+        const fontSize = 12;
+        svg += `<text x="${labelX}" y="${labelY - 8}" text-anchor="middle" font-family="Virgil, Inter, sans-serif" font-size="${fontSize}" fill="${stroke}" font-style="italic">${escapeXml(shape.label)}</text>`;
+      }
+      
+      return svg;
     }
     
     case 'text': {

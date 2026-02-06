@@ -66,6 +66,10 @@ export interface ArrowShape extends BaseShape {
   dashed?: boolean;      // dashed line
   arrowHead?: 'arrow' | 'triangle' | 'diamond' | 'circle' | 'none';
   arrowTail?: 'arrow' | 'triangle' | 'diamond' | 'circle' | 'none';
+  // Arrow label - positioned along the path
+  label?: string;
+  labelPosition?: number; // 0 = start, 0.5 = middle (default), 1 = end
+  labelOffset?: { x: number; y: number }; // Fine-tune label position
 }
 
 export interface CylinderShape extends BaseShape {
