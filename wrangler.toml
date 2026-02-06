@@ -2,6 +2,15 @@ name = "sketchboard"
 main = "src/index.ts"
 compatibility_date = "2025-01-01"
 
+# Disable previews (required for Durable Objects)
+workers_dev = true
+preview_urls = false
+
+# Route to voxwise.ai domain
+routes = [
+  { pattern = "sketch.voxwise.ai/*", zone_name = "voxwise.ai" }
+]
+
 [durable_objects]
 bindings = [
   { name = "CANVAS", class_name = "CanvasDO" }
@@ -9,7 +18,7 @@ bindings = [
 
 [[migrations]]
 tag = "v1"
-new_classes = ["CanvasDO"]
+new_sqlite_classes = ["CanvasDO"]
 
 [vars]
-ENVIRONMENT = "development"
+ENVIRONMENT = "production"

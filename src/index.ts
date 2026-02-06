@@ -6,7 +6,11 @@ import { cors } from 'hono/cors';
 import { CanvasDO } from '@/canvas-do';
 import { renderToSvg, renderToSvgHtml } from '@/render';
 import { renderViewer } from '@/viewer';
+import { Resvg, initWasm } from '@resvg/resvg-wasm';
 import type { CanvasState, Shape, DrawCommand, ExcalidrawFile } from '@/types';
+
+// Track WASM initialization
+let wasmInitialized = false;
 
 // Re-export DO for wrangler
 export { CanvasDO };
@@ -120,7 +124,8 @@ app.get('/canvas/:id', async (c) => {
   const protocol = c.req.url.startsWith('https') ? 'wss' : 'ws';
   const host = c.req.header('host') || 'localhost:8787';
   const wsUrl = `${protocol}://${host}/canvas/${id}/ws`;
-  return c.html(renderViewer(id, wsUrl));
+  const darkMode = c.req.query('light') !== 'true';
+  return c.html(renderViewer(id, wsUrl, darkMode));
 });
 
 // WebSocket endpoint for live updates
@@ -148,11 +153,46 @@ app.get('/canvas/:id/svg', async (c) => {
   const width = parseInt(c.req.query('width') || '800');
   const height = parseInt(c.req.query('height') || '600');
   const roughness = parseFloat(c.req.query('roughness') || '1');
+  const darkMode = c.req.query('dark') === 'true' || c.req.query('dark') === '1';
+  const style = (c.req.query('style') as 'rough' | 'clean') || 'rough';
   
-  const svg = renderToSvgHtml(state, { width, height, roughness });
+  const svg = renderToSvgHtml(state, { width, height, roughness, darkMode, style });
   
   return c.body(svg, 200, {
     'Content-Type': 'image/svg+xml',
+    'Cache-Control': 'no-cache'
+  });
+});
+
+// Render canvas to PNG
+app.get('/canvas/:id/png', async (c) => {
+  const id = c.req.param('id');
+  const stub = getCanvasStub(c, id);
+  const resp = await stub.fetch(new Request('https://internal/state'));
+  const state = await resp.json() as CanvasState;
+  
+  const width = parseInt(c.req.query('width') || '800');
+  const height = parseInt(c.req.query('height') || '600');
+  const darkMode = c.req.query('dark') === 'true' || c.req.query('dark') === '1';
+  
+  const svg = renderToSvg(state, { width, height, roughness: 1, darkMode });
+  
+  // Initialize WASM if needed
+  if (!wasmInitialized) {
+    // Fetch WASM from CDN
+    const wasmResp = await fetch('https://unpkg.com/@aspect-ratio/core-wasm@0.0.0/index_bg.wasm');
+    await initWasm(fetch('https://unpkg.com/@resvg/resvg-wasm@2.6.2/index_bg.wasm'));
+    wasmInitialized = true;
+  }
+  
+  const resvg = new Resvg(svg, {
+    fitTo: { mode: 'width', value: width }
+  });
+  const pngData = resvg.render();
+  const pngBuffer = pngData.asPng();
+  
+  return c.body(pngBuffer, 200, {
+    'Content-Type': 'image/png',
     'Cache-Control': 'no-cache'
   });
 });
@@ -235,4 +275,22 @@ app.get('/canvas/:id/export/excalidraw', async (c) => {
   return c.json(excalidraw);
 });
 
-export default app;
+// Export with WebSocket upgrade handling
+// Hono doesn't pass Upgrade header properly, so intercept WS requests before Hono
+export default {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    // Handle WebSocket upgrades directly (bypass Hono)
+    const url = new URL(request.url);
+    const wsMatch = url.pathname.match(/^\/canvas\/([^/]+)\/ws$/);
+    
+    if (wsMatch && request.headers.get('Upgrade') === 'websocket') {
+      const canvasId = wsMatch[1];
+      const doId = env.CANVAS.idFromName(canvasId);
+      const stub = env.CANVAS.get(doId);
+      return stub.fetch(request);
+    }
+    
+    // Everything else goes through Hono
+    return app.fetch(request, env, ctx);
+  }
+};

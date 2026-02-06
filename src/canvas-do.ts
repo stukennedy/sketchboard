@@ -5,7 +5,6 @@ import type { CanvasState, Shape, DrawCommand } from '@/types';
 export class CanvasDO implements DurableObject {
   private state: DurableObjectState;
   private canvas: CanvasState | null = null;
-  private sessions: Set<WebSocket> = new Set();
 
   constructor(state: DurableObjectState) {
     this.state = state;
@@ -40,11 +39,12 @@ export class CanvasDO implements DurableObject {
 
   private broadcast(message: object): void {
     const json = JSON.stringify(message);
-    for (const ws of this.sessions) {
+    // Use Cloudflare's WebSocket hibernation API to get all connected sockets
+    for (const ws of this.state.getWebSockets()) {
       try {
         ws.send(json);
       } catch {
-        this.sessions.delete(ws);
+        // Socket will be cleaned up automatically
       }
     }
   }
@@ -57,8 +57,8 @@ export class CanvasDO implements DurableObject {
       const pair = new WebSocketPair();
       const [client, server] = Object.values(pair);
       
+      // Accept with hibernation support
       this.state.acceptWebSocket(server);
-      this.sessions.add(server);
       
       // Send current state on connect
       const canvas = await this.loadCanvas();
@@ -153,10 +153,10 @@ export class CanvasDO implements DurableObject {
   }
 
   webSocketClose(ws: WebSocket): void {
-    this.sessions.delete(ws);
+    // Cloudflare handles cleanup automatically
   }
 
   webSocketError(ws: WebSocket): void {
-    this.sessions.delete(ws);
+    // Cloudflare handles cleanup automatically
   }
 }

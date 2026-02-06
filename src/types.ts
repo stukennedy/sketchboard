@@ -1,6 +1,9 @@
 // Shape types for hand-drawn diagrams
 
-export type ShapeType = 'rectangle' | 'ellipse' | 'line' | 'arrow' | 'text' | 'diamond';
+export type ShapeType = 
+  | 'rectangle' | 'ellipse' | 'diamond' | 'line' | 'arrow' | 'text'
+  // New shapes
+  | 'cylinder' | 'cloud' | 'hexagon' | 'document' | 'person' | 'callout';
 
 export interface Point {
   x: number;
@@ -49,6 +52,54 @@ export interface ArrowShape extends BaseShape {
   points: Point[];
   startBinding?: string; // shape id
   endBinding?: string;   // shape id
+  curved?: boolean;      // use bezier curves
+  dashed?: boolean;      // dashed line
+  arrowHead?: 'arrow' | 'triangle' | 'diamond' | 'circle' | 'none';
+  arrowTail?: 'arrow' | 'triangle' | 'diamond' | 'circle' | 'none';
+}
+
+export interface CylinderShape extends BaseShape {
+  type: 'cylinder';
+  width: number;
+  height: number;
+  label?: string;
+}
+
+export interface CloudShape extends BaseShape {
+  type: 'cloud';
+  width: number;
+  height: number;
+  label?: string;
+}
+
+export interface HexagonShape extends BaseShape {
+  type: 'hexagon';
+  width: number;
+  height: number;
+  label?: string;
+}
+
+export interface DocumentShape extends BaseShape {
+  type: 'document';
+  width: number;
+  height: number;
+  label?: string;
+}
+
+export interface PersonShape extends BaseShape {
+  type: 'person';
+  width: number;
+  height: number;
+  label?: string;
+}
+
+export interface CalloutShape extends BaseShape {
+  type: 'callout';
+  width: number;
+  height: number;
+  label?: string;
+  pointerX?: number;  // relative to shape
+  pointerY?: number;
 }
 
 export interface TextShape extends BaseShape {
@@ -58,7 +109,9 @@ export interface TextShape extends BaseShape {
   fontFamily?: string;
 }
 
-export type Shape = RectangleShape | EllipseShape | DiamondShape | LineShape | ArrowShape | TextShape;
+export type Shape = 
+  | RectangleShape | EllipseShape | DiamondShape | LineShape | ArrowShape | TextShape
+  | CylinderShape | CloudShape | HexagonShape | DocumentShape | PersonShape | CalloutShape;
 
 export interface CanvasState {
   id: string;

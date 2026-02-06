@@ -8,6 +8,28 @@ interface RenderOptions {
   height?: number;
   roughness?: number;
   seed?: number;
+  darkMode?: boolean;
+  style?: 'rough' | 'clean';  // rough = hand-drawn, clean = crisp SVG
+}
+
+// Calculate optimal font size for text to fit in a shape
+function calcFontSize(text: string, maxWidth: number, maxHeight: number, baseSize: number = 16): number {
+  // Handle multi-line text
+  const lines = text.split('\n');
+  const longestLine = lines.reduce((a, b) => a.length > b.length ? a : b, '');
+  
+  // Rough character width estimate (0.6 * fontSize for Virgil font)
+  const charWidthRatio = 0.55;
+  const lineHeightRatio = 1.3;
+  
+  // Calculate max font size that fits width
+  const maxFontByWidth = (maxWidth * 0.85) / (longestLine.length * charWidthRatio);
+  
+  // Calculate max font size that fits height
+  const maxFontByHeight = (maxHeight * 0.7) / (lines.length * lineHeightRatio);
+  
+  // Use the smaller of the two, capped at baseSize
+  return Math.min(baseSize, maxFontByWidth, maxFontByHeight, 20);
 }
 
 // Simple seeded random for consistent hand-drawn effect
@@ -90,24 +112,194 @@ function roughDiamond(x: number, y: number, w: number, h: number, rand: () => nu
 }
 
 // Generate an arrow head
-function arrowHead(x: number, y: number, angle: number, size: number = 15): string {
+function arrowHead(x: number, y: number, angle: number, size: number = 15, style: string = 'arrow'): string {
   const a1 = angle + Math.PI * 0.8;
   const a2 = angle - Math.PI * 0.8;
   const x1 = x + Math.cos(a1) * size;
   const y1 = y + Math.sin(a1) * size;
   const x2 = x + Math.cos(a2) * size;
   const y2 = y + Math.sin(a2) * size;
-  return `M ${x1} ${y1} L ${x} ${y} L ${x2} ${y2}`;
+  
+  switch (style) {
+    case 'triangle':
+      return `M ${x1} ${y1} L ${x} ${y} L ${x2} ${y2} Z`;
+    case 'diamond':
+      const dx = x - Math.cos(angle) * size;
+      const dy = y - Math.sin(angle) * size;
+      return `M ${x} ${y} L ${x1} ${y1} L ${dx} ${dy} L ${x2} ${y2} Z`;
+    case 'circle':
+      return `M ${x - size/2} ${y} a ${size/2} ${size/2} 0 1 0 ${size} 0 a ${size/2} ${size/2} 0 1 0 ${-size} 0`;
+    case 'none':
+      return '';
+    default: // 'arrow'
+      return `M ${x1} ${y1} L ${x} ${y} L ${x2} ${y2}`;
+  }
+}
+
+// Generate a curved bezier path through points
+function curvedPath(points: Point[], rand: () => number, roughness: number = 1): string {
+  if (points.length < 2) return '';
+  
+  let path = `M ${points[0].x} ${points[0].y}`;
+  
+  if (points.length === 2) {
+    // Simple curve with control point
+    const p1 = points[0], p2 = points[1];
+    const midX = (p1.x + p2.x) / 2 + (rand() - 0.5) * roughness * 5;
+    const midY = (p1.y + p2.y) / 2 + (rand() - 0.5) * roughness * 5;
+    // Perpendicular offset for curve
+    const dx = p2.x - p1.x, dy = p2.y - p1.y;
+    const len = Math.sqrt(dx*dx + dy*dy);
+    const perpX = -dy / len * 20, perpY = dx / len * 20;
+    path += ` Q ${midX + perpX} ${midY + perpY} ${p2.x} ${p2.y}`;
+  } else {
+    // Use points as curve control points
+    for (let i = 1; i < points.length - 1; i++) {
+      const p = points[i];
+      const next = points[i + 1];
+      const midX = (p.x + next.x) / 2;
+      const midY = (p.y + next.y) / 2;
+      path += ` Q ${p.x} ${p.y} ${midX} ${midY}`;
+    }
+    const last = points[points.length - 1];
+    const prev = points[points.length - 2];
+    path += ` Q ${prev.x} ${prev.y} ${last.x} ${last.y}`;
+  }
+  
+  return path;
+}
+
+// Generate rough cylinder path
+function roughCylinder(x: number, y: number, w: number, h: number, rand: () => number, roughness: number = 1): string {
+  const ellipseH = h * 0.15; // Top/bottom ellipse height
+  const bodyH = h - ellipseH * 2;
+  const cx = x + w / 2;
+  
+  // Top ellipse
+  const top = roughEllipse(cx, y + ellipseH, w / 2, ellipseH, rand, roughness);
+  // Bottom ellipse (visible part)
+  const bottom = `M ${x} ${y + h - ellipseH} Q ${x} ${y + h + ellipseH * 0.5} ${cx} ${y + h} Q ${x + w} ${y + h + ellipseH * 0.5} ${x + w} ${y + h - ellipseH}`;
+  // Sides
+  const leftSide = roughLine(x, y + ellipseH, x, y + h - ellipseH, rand, roughness);
+  const rightSide = roughLine(x + w, y + ellipseH, x + w, y + h - ellipseH, rand, roughness);
+  
+  return `${top} ${leftSide} ${rightSide} ${bottom}`;
+}
+
+// Generate rough cloud path
+function roughCloud(x: number, y: number, w: number, h: number, rand: () => number, roughness: number = 1): string {
+  const bumps: Point[] = [];
+  const cx = x + w / 2, cy = y + h / 2;
+  const rx = w / 2, ry = h / 2;
+  
+  // Generate cloud bumps
+  const numBumps = 8;
+  for (let i = 0; i < numBumps; i++) {
+    const angle = (i / numBumps) * Math.PI * 2;
+    const bumpSize = 0.8 + rand() * 0.4;
+    bumps.push({
+      x: cx + Math.cos(angle) * rx * bumpSize + (rand() - 0.5) * roughness * 3,
+      y: cy + Math.sin(angle) * ry * bumpSize + (rand() - 0.5) * roughness * 3
+    });
+  }
+  
+  let path = `M ${bumps[0].x} ${bumps[0].y}`;
+  for (let i = 0; i < bumps.length; i++) {
+    const curr = bumps[i];
+    const next = bumps[(i + 1) % bumps.length];
+    const cpX = (curr.x + next.x) / 2 + (rand() - 0.5) * w * 0.3;
+    const cpY = (curr.y + next.y) / 2 + (rand() - 0.5) * h * 0.3;
+    path += ` Q ${cpX} ${cpY} ${next.x} ${next.y}`;
+  }
+  
+  return path;
+}
+
+// Generate rough hexagon path
+function roughHexagon(x: number, y: number, w: number, h: number, rand: () => number, roughness: number = 1): string {
+  const cx = x + w / 2, cy = y + h / 2;
+  const inset = w * 0.25;
+  const paths: string[] = [];
+  
+  paths.push(roughLine(x + inset, y, x + w - inset, y, rand, roughness));
+  paths.push(roughLine(x + w - inset, y, x + w, cy, rand, roughness));
+  paths.push(roughLine(x + w, cy, x + w - inset, y + h, rand, roughness));
+  paths.push(roughLine(x + w - inset, y + h, x + inset, y + h, rand, roughness));
+  paths.push(roughLine(x + inset, y + h, x, cy, rand, roughness));
+  paths.push(roughLine(x, cy, x + inset, y, rand, roughness));
+  
+  return paths.join(' ');
+}
+
+// Generate rough document path (wavy bottom)
+function roughDocument(x: number, y: number, w: number, h: number, rand: () => number, roughness: number = 1): string {
+  const waveH = h * 0.1;
+  const paths: string[] = [];
+  
+  paths.push(roughLine(x, y, x + w, y, rand, roughness));
+  paths.push(roughLine(x + w, y, x + w, y + h - waveH, rand, roughness));
+  // Wavy bottom
+  paths.push(`M ${x + w} ${y + h - waveH} Q ${x + w * 0.75} ${y + h + waveH} ${x + w * 0.5} ${y + h - waveH} Q ${x + w * 0.25} ${y + h - waveH * 3} ${x} ${y + h - waveH}`);
+  paths.push(roughLine(x, y + h - waveH, x, y, rand, roughness));
+  
+  return paths.join(' ');
+}
+
+// Generate rough person/stick figure
+function roughPerson(x: number, y: number, w: number, h: number, rand: () => number, roughness: number = 1): string {
+  const headR = Math.min(w, h) * 0.2;
+  const cx = x + w / 2;
+  const headY = y + headR;
+  const bodyTop = y + headR * 2 + 5;
+  const bodyBottom = y + h * 0.65;
+  const footY = y + h;
+  
+  const head = roughEllipse(cx, headY, headR, headR, rand, roughness);
+  const body = roughLine(cx, bodyTop, cx, bodyBottom, rand, roughness);
+  const leftArm = roughLine(cx, bodyTop + 10, x, bodyTop + 30, rand, roughness);
+  const rightArm = roughLine(cx, bodyTop + 10, x + w, bodyTop + 30, rand, roughness);
+  const leftLeg = roughLine(cx, bodyBottom, x + w * 0.2, footY, rand, roughness);
+  const rightLeg = roughLine(cx, bodyBottom, x + w * 0.8, footY, rand, roughness);
+  
+  return `${head} ${body} ${leftArm} ${rightArm} ${leftLeg} ${rightLeg}`;
+}
+
+// Generate callout/speech bubble
+function roughCallout(x: number, y: number, w: number, h: number, px: number, py: number, rand: () => number, roughness: number = 1): string {
+  const r = Math.min(w, h) * 0.1; // Corner radius
+  const tailW = w * 0.15;
+  
+  // Pointer position (default bottom-left)
+  const pointerX = px || x + w * 0.2;
+  const pointerY = py || y + h + 20;
+  
+  let path = `M ${x + r} ${y}`;
+  path += ` L ${x + w - r} ${y} Q ${x + w} ${y} ${x + w} ${y + r}`;
+  path += ` L ${x + w} ${y + h - r} Q ${x + w} ${y + h} ${x + w - r} ${y + h}`;
+  // Add pointer
+  path += ` L ${x + w * 0.35} ${y + h} L ${pointerX} ${pointerY} L ${x + w * 0.15} ${y + h}`;
+  path += ` L ${x + r} ${y + h} Q ${x} ${y + h} ${x} ${y + h - r}`;
+  path += ` L ${x} ${y + r} Q ${x} ${y} ${x + r} ${y}`;
+  
+  return path;
 }
 
 // Render a single shape to SVG elements
-function renderShape(shape: Shape, rand: () => number, roughness: number = 1): string {
-  const stroke = shape.strokeColor || '#1e1e1e';
+function renderShape(shape: Shape, rand: () => number, roughness: number = 1, darkMode: boolean = false, cleanStyle: boolean = false): string {
+  const defaultStroke = darkMode ? '#e0e0e0' : '#1e1e1e';
+  const stroke = shape.strokeColor || defaultStroke;
   const fill = shape.fillColor || 'none';
   const strokeWidth = shape.strokeWidth || 2;
   const opacity = shape.opacity ?? 1;
   
   const style = `stroke="${stroke}" fill="${fill}" stroke-width="${strokeWidth}" opacity="${opacity}"`;
+  const styleNoFill = `stroke="${stroke}" fill="none" stroke-width="${strokeWidth}" opacity="${opacity}"`;
+  const fillStyle = fill !== 'none' ? `fill="${fill}" opacity="${opacity * 0.3}"` : '';
+  
+  // Clean style uses crisp SVG primitives
+  if (cleanStyle) {
+    return renderCleanShape(shape, stroke, fill, strokeWidth, opacity, darkMode);
+  }
   
   switch (shape.type) {
     case 'rectangle': {
@@ -119,7 +311,8 @@ function renderShape(shape: Shape, rand: () => number, roughness: number = 1): s
       if (shape.label) {
         const cx = shape.x + shape.width / 2;
         const cy = shape.y + shape.height / 2;
-        svg += `<text x="${cx}" y="${cy}" text-anchor="middle" dominant-baseline="middle" font-family="Virgil, Segoe UI Emoji, sans-serif" font-size="16" fill="${stroke}">${escapeXml(shape.label)}</text>`;
+        const fontSize = calcFontSize(shape.label, shape.width, shape.height);
+        svg += renderMultilineText(cx, cy, shape.label, fontSize, stroke);
       }
       return svg;
     }
@@ -133,7 +326,8 @@ function renderShape(shape: Shape, rand: () => number, roughness: number = 1): s
         svg = `<ellipse cx="${cx}" cy="${cy}" rx="${shape.width / 2}" ry="${shape.height / 2}" fill="${fill}" opacity="${opacity * 0.3}" stroke="none"/>` + svg;
       }
       if (shape.label) {
-        svg += `<text x="${cx}" y="${cy}" text-anchor="middle" dominant-baseline="middle" font-family="Virgil, Segoe UI Emoji, sans-serif" font-size="16" fill="${stroke}">${escapeXml(shape.label)}</text>`;
+        const fontSize = calcFontSize(shape.label, shape.width * 0.8, shape.height * 0.8);
+        svg += renderMultilineText(cx, cy, shape.label, fontSize, stroke);
       }
       return svg;
     }
@@ -150,7 +344,8 @@ function renderShape(shape: Shape, rand: () => number, roughness: number = 1): s
       if (shape.label) {
         const cx = shape.x + shape.width / 2;
         const cy = shape.y + shape.height / 2;
-        svg += `<text x="${cx}" y="${cy}" text-anchor="middle" dominant-baseline="middle" font-family="Virgil, Segoe UI Emoji, sans-serif" font-size="16" fill="${stroke}">${escapeXml(shape.label)}</text>`;
+        const fontSize = calcFontSize(shape.label, shape.width * 0.6, shape.height * 0.6);
+        svg += renderMultilineText(cx, cy, shape.label, fontSize, stroke);
       }
       return svg;
     }
@@ -168,18 +363,38 @@ function renderShape(shape: Shape, rand: () => number, roughness: number = 1): s
     
     case 'arrow': {
       if (shape.points.length < 2) return '';
+      const dashStyle = shape.dashed ? ' stroke-dasharray="8 4"' : '';
       let path = '';
-      for (let i = 0; i < shape.points.length - 1; i++) {
-        const p1 = shape.points[i];
-        const p2 = shape.points[i + 1];
-        path += roughLine(shape.x + p1.x, shape.y + p1.y, shape.x + p2.x, shape.y + p2.y, rand, roughness) + ' ';
+      
+      // Offset points by shape position
+      const pts = shape.points.map(p => ({ x: shape.x + p.x, y: shape.y + p.y }));
+      
+      if (shape.curved) {
+        path = curvedPath(pts, rand, roughness);
+      } else {
+        for (let i = 0; i < pts.length - 1; i++) {
+          path += roughLine(pts[i].x, pts[i].y, pts[i+1].x, pts[i+1].y, rand, roughness) + ' ';
+        }
       }
-      // Add arrow head
-      const last = shape.points[shape.points.length - 1];
-      const prev = shape.points[shape.points.length - 2];
+      
+      // Arrow head at end
+      const last = pts[pts.length - 1];
+      const prev = pts[pts.length - 2];
       const angle = Math.atan2(last.y - prev.y, last.x - prev.x);
-      const headPath = arrowHead(shape.x + last.x, shape.y + last.y, angle);
-      return `<path d="${path}" ${style} fill="none"/><path d="${headPath}" ${style} fill="none"/>`;
+      const headStyle = shape.arrowHead || 'arrow';
+      const headPath = arrowHead(last.x, last.y, angle, 12, headStyle);
+      
+      // Arrow tail at start (if specified)
+      let tailPath = '';
+      if (shape.arrowTail && shape.arrowTail !== 'none') {
+        const first = pts[0];
+        const second = pts[1];
+        const tailAngle = Math.atan2(first.y - second.y, first.x - second.x);
+        tailPath = arrowHead(first.x, first.y, tailAngle, 12, shape.arrowTail);
+      }
+      
+      const headFill = (headStyle === 'triangle' || headStyle === 'diamond') ? stroke : 'none';
+      return `<path d="${path}" ${style} fill="none"${dashStyle}/><path d="${headPath}" ${style} fill="${headFill}"/>${tailPath ? `<path d="${tailPath}" ${style} fill="${headFill}"/>` : ''}`;
     }
     
     case 'text': {
@@ -188,9 +403,296 @@ function renderShape(shape: Shape, rand: () => number, roughness: number = 1): s
       return `<text x="${shape.x}" y="${shape.y}" font-family="${fontFamily}" font-size="${fontSize}" fill="${stroke}" opacity="${opacity}">${escapeXml(shape.text)}</text>`;
     }
     
+    case 'cylinder': {
+      const path = roughCylinder(shape.x, shape.y, shape.width, shape.height, rand, roughness);
+      let svg = '';
+      if (fill !== 'none') {
+        svg = `<ellipse cx="${shape.x + shape.width/2}" cy="${shape.y + shape.height * 0.15}" rx="${shape.width/2}" ry="${shape.height * 0.15}" fill="${fill}" opacity="${opacity * 0.3}" stroke="none"/>`;
+        svg += `<rect x="${shape.x}" y="${shape.y + shape.height * 0.15}" width="${shape.width}" height="${shape.height * 0.7}" fill="${fill}" opacity="${opacity * 0.3}" stroke="none"/>`;
+      }
+      svg += `<path d="${path}" ${style} fill="none"/>`;
+      if (shape.label) {
+        const cx = shape.x + shape.width / 2;
+        const cy = shape.y + shape.height / 2;
+        const fontSize = calcFontSize(shape.label, shape.width * 0.8, shape.height * 0.5);
+        svg += renderMultilineText(cx, cy, shape.label, fontSize, stroke);
+      }
+      return svg;
+    }
+    
+    case 'cloud': {
+      const path = roughCloud(shape.x, shape.y, shape.width, shape.height, rand, roughness);
+      let svg = '';
+      if (fill !== 'none') {
+        svg = `<path d="${path}" fill="${fill}" opacity="${opacity * 0.3}" stroke="none"/>`;
+      }
+      svg += `<path d="${path}" ${style} fill="none"/>`;
+      if (shape.label) {
+        const cx = shape.x + shape.width / 2;
+        const cy = shape.y + shape.height / 2;
+        const fontSize = calcFontSize(shape.label, shape.width * 0.6, shape.height * 0.5);
+        svg += renderMultilineText(cx, cy, shape.label, fontSize, stroke);
+      }
+      return svg;
+    }
+    
+    case 'hexagon': {
+      const path = roughHexagon(shape.x, shape.y, shape.width, shape.height, rand, roughness);
+      let svg = '';
+      if (fill !== 'none') {
+        const cx = shape.x + shape.width / 2;
+        const cy = shape.y + shape.height / 2;
+        const inset = shape.width * 0.25;
+        const points = `${shape.x + inset},${shape.y} ${shape.x + shape.width - inset},${shape.y} ${shape.x + shape.width},${cy} ${shape.x + shape.width - inset},${shape.y + shape.height} ${shape.x + inset},${shape.y + shape.height} ${shape.x},${cy}`;
+        svg = `<polygon points="${points}" fill="${fill}" opacity="${opacity * 0.3}" stroke="none"/>`;
+      }
+      svg += `<path d="${path}" ${style} fill="none"/>`;
+      if (shape.label) {
+        const cx = shape.x + shape.width / 2;
+        const cy = shape.y + shape.height / 2;
+        const fontSize = calcFontSize(shape.label, shape.width * 0.5, shape.height * 0.7);
+        svg += renderMultilineText(cx, cy, shape.label, fontSize, stroke);
+      }
+      return svg;
+    }
+    
+    case 'document': {
+      const path = roughDocument(shape.x, shape.y, shape.width, shape.height, rand, roughness);
+      let svg = '';
+      if (fill !== 'none') {
+        svg = `<rect x="${shape.x}" y="${shape.y}" width="${shape.width}" height="${shape.height * 0.9}" fill="${fill}" opacity="${opacity * 0.3}" stroke="none"/>`;
+      }
+      svg += `<path d="${path}" ${style} fill="none"/>`;
+      if (shape.label) {
+        const cx = shape.x + shape.width / 2;
+        const cy = shape.y + shape.height * 0.4;
+        const fontSize = calcFontSize(shape.label, shape.width * 0.8, shape.height * 0.6);
+        svg += renderMultilineText(cx, cy, shape.label, fontSize, stroke);
+      }
+      return svg;
+    }
+    
+    case 'person': {
+      const path = roughPerson(shape.x, shape.y, shape.width, shape.height, rand, roughness);
+      let svg = `<path d="${path}" ${style} fill="none"/>`;
+      if (shape.label) {
+        const cx = shape.x + shape.width / 2;
+        const cy = shape.y + shape.height + 15;
+        svg += `<text x="${cx}" y="${cy}" text-anchor="middle" font-family="Virgil, Segoe UI Emoji, sans-serif" font-size="14" fill="${stroke}">${escapeXml(shape.label)}</text>`;
+      }
+      return svg;
+    }
+    
+    case 'callout': {
+      const px = shape.pointerX ?? shape.x + shape.width * 0.2;
+      const py = shape.pointerY ?? shape.y + shape.height + 20;
+      const path = roughCallout(shape.x, shape.y, shape.width, shape.height, px, py, rand, roughness);
+      let svg = '';
+      if (fill !== 'none') {
+        svg = `<path d="${path}" fill="${fill}" opacity="${opacity * 0.3}" stroke="none"/>`;
+      }
+      svg += `<path d="${path}" ${style} fill="none"/>`;
+      if (shape.label) {
+        const cx = shape.x + shape.width / 2;
+        const cy = shape.y + shape.height / 2;
+        const fontSize = calcFontSize(shape.label, shape.width * 0.8, shape.height * 0.7);
+        svg += renderMultilineText(cx, cy, shape.label, fontSize, stroke);
+      }
+      return svg;
+    }
+    
     default:
       return '';
   }
+}
+
+// Render clean/crisp SVG shapes
+function renderCleanShape(shape: Shape, stroke: string, fill: string, strokeWidth: number, opacity: number, darkMode: boolean): string {
+  const style = `stroke="${stroke}" stroke-width="${strokeWidth}" opacity="${opacity}"`;
+  const radius = 8; // Corner radius for rounded rectangles
+  
+  switch (shape.type) {
+    case 'rectangle': {
+      let svg = `<rect x="${shape.x}" y="${shape.y}" width="${shape.width}" height="${shape.height}" rx="${radius}" ry="${radius}" fill="${fill !== 'none' ? fill : 'none'}" ${style}/>`;
+      if (shape.label) {
+        const cx = shape.x + shape.width / 2;
+        const cy = shape.y + shape.height / 2;
+        const fontSize = calcFontSize(shape.label, shape.width, shape.height);
+        svg += renderMultilineText(cx, cy, shape.label, fontSize, stroke);
+      }
+      return svg;
+    }
+    
+    case 'ellipse': {
+      const cx = shape.x + shape.width / 2;
+      const cy = shape.y + shape.height / 2;
+      let svg = `<ellipse cx="${cx}" cy="${cy}" rx="${shape.width/2}" ry="${shape.height/2}" fill="${fill !== 'none' ? fill : 'none'}" ${style}/>`;
+      if (shape.label) {
+        const fontSize = calcFontSize(shape.label, shape.width * 0.8, shape.height * 0.8);
+        svg += renderMultilineText(cx, cy, shape.label, fontSize, stroke);
+      }
+      return svg;
+    }
+    
+    case 'diamond': {
+      const cx = shape.x + shape.width / 2;
+      const cy = shape.y + shape.height / 2;
+      const points = `${cx},${shape.y} ${shape.x + shape.width},${cy} ${cx},${shape.y + shape.height} ${shape.x},${cy}`;
+      let svg = `<polygon points="${points}" fill="${fill !== 'none' ? fill : 'none'}" ${style}/>`;
+      if (shape.label) {
+        const fontSize = calcFontSize(shape.label, shape.width * 0.6, shape.height * 0.6);
+        svg += renderMultilineText(cx, cy, shape.label, fontSize, stroke);
+      }
+      return svg;
+    }
+    
+    case 'line': {
+      if (shape.points.length < 2) return '';
+      const pts = shape.points.map(p => `${shape.x + p.x},${shape.y + p.y}`).join(' ');
+      return `<polyline points="${pts}" fill="none" ${style}/>`;
+    }
+    
+    case 'arrow': {
+      if (shape.points.length < 2) return '';
+      const pts = shape.points.map(p => ({ x: shape.x + p.x, y: shape.y + p.y }));
+      const dashStyle = shape.dashed ? ' stroke-dasharray="8 4"' : '';
+      
+      let path = '';
+      if (shape.curved && pts.length >= 2) {
+        // Smooth bezier curve
+        path = `M ${pts[0].x} ${pts[0].y}`;
+        if (pts.length === 2) {
+          const dx = pts[1].x - pts[0].x, dy = pts[1].y - pts[0].y;
+          const cx1 = pts[0].x + dx * 0.5, cy1 = pts[0].y;
+          const cx2 = pts[0].x + dx * 0.5, cy2 = pts[1].y;
+          path += ` C ${cx1} ${cy1}, ${cx2} ${cy2}, ${pts[1].x} ${pts[1].y}`;
+        } else {
+          for (let i = 1; i < pts.length; i++) {
+            path += ` L ${pts[i].x} ${pts[i].y}`;
+          }
+        }
+      } else {
+        path = 'M ' + pts.map(p => `${p.x} ${p.y}`).join(' L ');
+      }
+      
+      // Arrow head
+      const last = pts[pts.length - 1];
+      const prev = pts[pts.length - 2];
+      const angle = Math.atan2(last.y - prev.y, last.x - prev.x);
+      const headStyle = shape.arrowHead || 'arrow';
+      const headPath = arrowHead(last.x, last.y, angle, 12, headStyle);
+      const headFill = (headStyle === 'triangle' || headStyle === 'diamond') ? stroke : 'none';
+      
+      return `<path d="${path}" fill="none" ${style}${dashStyle}/><path d="${headPath}" stroke="${stroke}" fill="${headFill}" stroke-width="${strokeWidth}"/>`;
+    }
+    
+    case 'text': {
+      const fontSize = shape.fontSize || 20;
+      return `<text x="${shape.x}" y="${shape.y}" font-family="Inter, -apple-system, sans-serif" font-size="${fontSize}" fill="${stroke}" opacity="${opacity}">${escapeXml(shape.text)}</text>`;
+    }
+    
+    case 'cylinder': {
+      const ellipseH = shape.height * 0.12;
+      const cx = shape.x + shape.width / 2;
+      let svg = `<ellipse cx="${cx}" cy="${shape.y + ellipseH}" rx="${shape.width/2}" ry="${ellipseH}" fill="${fill !== 'none' ? fill : 'none'}" ${style}/>`;
+      svg += `<rect x="${shape.x}" y="${shape.y + ellipseH}" width="${shape.width}" height="${shape.height - ellipseH * 2}" fill="${fill !== 'none' ? fill : 'none'}" stroke="${stroke}" stroke-width="${strokeWidth}" opacity="${opacity}"/>`;
+      svg += `<ellipse cx="${cx}" cy="${shape.y + shape.height - ellipseH}" rx="${shape.width/2}" ry="${ellipseH}" fill="${fill !== 'none' ? fill : 'none'}" ${style}/>`;
+      if (shape.label) {
+        const fontSize = calcFontSize(shape.label, shape.width * 0.8, shape.height * 0.5);
+        svg += renderMultilineText(cx, shape.y + shape.height / 2, shape.label, fontSize, stroke);
+      }
+      return svg;
+    }
+    
+    case 'hexagon': {
+      const cx = shape.x + shape.width / 2;
+      const cy = shape.y + shape.height / 2;
+      const inset = shape.width * 0.25;
+      const points = `${shape.x + inset},${shape.y} ${shape.x + shape.width - inset},${shape.y} ${shape.x + shape.width},${cy} ${shape.x + shape.width - inset},${shape.y + shape.height} ${shape.x + inset},${shape.y + shape.height} ${shape.x},${cy}`;
+      let svg = `<polygon points="${points}" fill="${fill !== 'none' ? fill : 'none'}" ${style}/>`;
+      if (shape.label) {
+        const fontSize = calcFontSize(shape.label, shape.width * 0.5, shape.height * 0.7);
+        svg += renderMultilineText(cx, cy, shape.label, fontSize, stroke);
+      }
+      return svg;
+    }
+    
+    case 'cloud': {
+      // Simplified cloud with arcs
+      const cx = shape.x + shape.width / 2;
+      const cy = shape.y + shape.height / 2;
+      const rx = shape.width / 2, ry = shape.height / 2;
+      const path = `M ${shape.x + rx * 0.3} ${shape.y + ry * 1.2} 
+        Q ${shape.x} ${cy} ${shape.x + rx * 0.3} ${shape.y + ry * 0.5}
+        Q ${shape.x + rx * 0.3} ${shape.y} ${cx} ${shape.y + ry * 0.3}
+        Q ${shape.x + shape.width - rx * 0.3} ${shape.y} ${shape.x + shape.width - rx * 0.3} ${shape.y + ry * 0.5}
+        Q ${shape.x + shape.width} ${cy} ${shape.x + shape.width - rx * 0.3} ${shape.y + ry * 1.2}
+        Q ${shape.x + shape.width - rx * 0.5} ${shape.y + shape.height} ${cx} ${shape.y + ry * 1.5}
+        Q ${shape.x + rx * 0.5} ${shape.y + shape.height} ${shape.x + rx * 0.3} ${shape.y + ry * 1.2} Z`;
+      let svg = `<path d="${path}" fill="${fill !== 'none' ? fill : 'none'}" ${style}/>`;
+      if (shape.label) {
+        const fontSize = calcFontSize(shape.label, shape.width * 0.6, shape.height * 0.5);
+        svg += renderMultilineText(cx, cy, shape.label, fontSize, stroke);
+      }
+      return svg;
+    }
+    
+    case 'document': {
+      const waveH = shape.height * 0.08;
+      const path = `M ${shape.x} ${shape.y} L ${shape.x + shape.width} ${shape.y} L ${shape.x + shape.width} ${shape.y + shape.height - waveH} Q ${shape.x + shape.width * 0.75} ${shape.y + shape.height + waveH} ${shape.x + shape.width * 0.5} ${shape.y + shape.height - waveH} Q ${shape.x + shape.width * 0.25} ${shape.y + shape.height - waveH * 3} ${shape.x} ${shape.y + shape.height - waveH} Z`;
+      let svg = `<path d="${path}" fill="${fill !== 'none' ? fill : 'none'}" ${style}/>`;
+      if (shape.label) {
+        const fontSize = calcFontSize(shape.label, shape.width * 0.8, shape.height * 0.6);
+        svg += renderMultilineText(shape.x + shape.width / 2, shape.y + shape.height * 0.4, shape.label, fontSize, stroke);
+      }
+      return svg;
+    }
+    
+    case 'person': {
+      const headR = Math.min(shape.width, shape.height) * 0.18;
+      const cx = shape.x + shape.width / 2;
+      const headY = shape.y + headR + 5;
+      let svg = `<circle cx="${cx}" cy="${headY}" r="${headR}" fill="none" ${style}/>`;
+      svg += `<line x1="${cx}" y1="${headY + headR}" x2="${cx}" y2="${shape.y + shape.height * 0.6}" ${style}/>`;
+      svg += `<line x1="${shape.x + shape.width * 0.15}" y1="${shape.y + shape.height * 0.35}" x2="${shape.x + shape.width * 0.85}" y2="${shape.y + shape.height * 0.35}" ${style}/>`;
+      svg += `<line x1="${cx}" y1="${shape.y + shape.height * 0.6}" x2="${shape.x + shape.width * 0.2}" y2="${shape.y + shape.height}" ${style}/>`;
+      svg += `<line x1="${cx}" y1="${shape.y + shape.height * 0.6}" x2="${shape.x + shape.width * 0.8}" y2="${shape.y + shape.height}" ${style}/>`;
+      if (shape.label) {
+        svg += `<text x="${cx}" y="${shape.y + shape.height + 18}" text-anchor="middle" font-family="Inter, -apple-system, sans-serif" font-size="14" fill="${stroke}">${escapeXml(shape.label)}</text>`;
+      }
+      return svg;
+    }
+    
+    case 'callout': {
+      const px = shape.pointerX ?? shape.x + shape.width * 0.2;
+      const py = shape.pointerY ?? shape.y + shape.height + 20;
+      const r = 8;
+      const path = `M ${shape.x + r} ${shape.y} L ${shape.x + shape.width - r} ${shape.y} Q ${shape.x + shape.width} ${shape.y} ${shape.x + shape.width} ${shape.y + r} L ${shape.x + shape.width} ${shape.y + shape.height - r} Q ${shape.x + shape.width} ${shape.y + shape.height} ${shape.x + shape.width - r} ${shape.y + shape.height} L ${shape.x + shape.width * 0.35} ${shape.y + shape.height} L ${px} ${py} L ${shape.x + shape.width * 0.15} ${shape.y + shape.height} L ${shape.x + r} ${shape.y + shape.height} Q ${shape.x} ${shape.y + shape.height} ${shape.x} ${shape.y + shape.height - r} L ${shape.x} ${shape.y + r} Q ${shape.x} ${shape.y} ${shape.x + r} ${shape.y} Z`;
+      let svg = `<path d="${path}" fill="${fill !== 'none' ? fill : 'none'}" ${style}/>`;
+      if (shape.label) {
+        const fontSize = calcFontSize(shape.label, shape.width * 0.8, shape.height * 0.7);
+        svg += renderMultilineText(shape.x + shape.width / 2, shape.y + shape.height / 2, shape.label, fontSize, stroke);
+      }
+      return svg;
+    }
+    
+    default:
+      return '';
+  }
+}
+
+// Render multiline text centered
+function renderMultilineText(cx: number, cy: number, text: string, fontSize: number, fill: string, darkMode: boolean = false): string {
+  // For shape labels, use dark text on light fills, light text on dark fills
+  // Default fill is based on mode if not specified
+  const lines = text.split('\n');
+  const lineHeight = fontSize * 1.3;
+  const totalHeight = lines.length * lineHeight;
+  const startY = cy - totalHeight / 2 + lineHeight / 2;
+  
+  return lines.map((line, i) => 
+    `<text x="${cx}" y="${startY + i * lineHeight}" text-anchor="middle" dominant-baseline="middle" font-family="Virgil, Segoe UI Emoji, sans-serif" font-size="${fontSize}" fill="${fill}">${escapeXml(line)}</text>`
+  ).join('');
 }
 
 function escapeXml(str: string): string {
@@ -210,7 +712,8 @@ export function renderToSvg(state: CanvasState, options: RenderOptions = {}): st
   const seed = options.seed || Date.now();
   
   const rand = seededRandom(seed);
-  const bgColor = state.backgroundColor || '#ffffff';
+  const darkMode = options.darkMode ?? false;
+  const bgColor = darkMode ? '#1a1a2e' : (state.backgroundColor || '#ffffff');
   
   // Calculate viewBox based on viewport
   const vx = state.viewport.x;
@@ -218,9 +721,11 @@ export function renderToSvg(state: CanvasState, options: RenderOptions = {}): st
   const vw = width / state.viewport.zoom;
   const vh = height / state.viewport.zoom;
   
+  const cleanStyle = options.style === 'clean';
+  
   let shapes = '';
   for (const shape of state.shapes) {
-    shapes += renderShape(shape, rand, roughness);
+    shapes += renderShape(shape, rand, roughness, darkMode, cleanStyle);
   }
   
   return `<?xml version="1.0" encoding="UTF-8"?>

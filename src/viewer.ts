@@ -1,13 +1,12 @@
 // HTML viewer with Datastar for live SVG updates
 
-export function renderViewer(canvasId: string, wsUrl: string): string {
+export function renderViewer(canvasId: string, wsUrl: string, darkMode: boolean = true): string {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Sketchboard</title>
-  <script type="module" src="https://cdn.jsdelivr.net/npm/@sudodevnull/datastar@1.0.0-beta.11/dist/datastar.min.js"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     
@@ -64,25 +63,20 @@ export function renderViewer(canvasId: string, wsUrl: string): string {
     main {
       flex: 1;
       display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 20px;
       overflow: hidden;
+      position: relative;
     }
     
     .canvas-container {
-      background: #fff;
-      border-radius: 8px;
-      box-shadow: 0 4px 24px rgba(0,0,0,0.3);
+      position: absolute;
+      inset: 0;
       overflow: hidden;
-      max-width: 100%;
-      max-height: 100%;
     }
     
     .canvas-container svg {
       display: block;
-      max-width: 100%;
-      height: auto;
+      width: 100%;
+      height: 100%;
     }
     
     .info-bar {
@@ -96,6 +90,12 @@ export function renderViewer(canvasId: string, wsUrl: string): string {
     }
     
     .empty-state {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
       text-align: center;
       color: #666;
       padding: 60px;
@@ -122,27 +122,83 @@ export function renderViewer(canvasId: string, wsUrl: string): string {
       font-family: 'Virgil';
       src: url('https://excalidraw.com/Virgil.woff2') format('woff2');
     }
+    
+    .controls {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    
+    .ctrl-btn {
+      background: #0f3460;
+      border: none;
+      border-radius: 6px;
+      padding: 6px 10px;
+      cursor: pointer;
+      font-size: 16px;
+      color: #fff;
+    }
+    
+    .ctrl-btn:hover {
+      background: #1a4a80;
+    }
+    
+    .zoom-display {
+      font-size: 12px;
+      color: #888;
+      min-width: 40px;
+    }
+    
+    .canvas-container {
+      cursor: grab;
+    }
+    
+    .canvas-container > div {
+      transition: transform 0.05s ease-out;
+    }
+    
+    /* Light mode overrides */
+    body.light-mode {
+      background: #f5f5f5;
+      color: #333;
+    }
+    
+    body.light-mode header,
+    body.light-mode .info-bar {
+      background: #fff;
+      border-color: #ddd;
+    }
+    
+    body.light-mode .theme-toggle {
+      background: #e0e0e0;
+    }
+    
+    body.light-mode .empty-state {
+      color: #888;
+    }
   </style>
 </head>
-<body data-store='{
-  "connected": false,
-  "shapeCount": 0,
-  "svg": "",
-  "lastUpdate": null
-}'>
+<body>
   <header>
     <h1>Sketchboard</h1>
-    <div class="status">
-      <span class="status-dot" data-class-connected="$connected"></span>
-      <span data-text="$connected ? 'Connected' : 'Connecting...'"></span>
+    <div class="controls">
+      <button onclick="resetView()" class="ctrl-btn" title="Reset view (Cmd+0)">⌂</button>
+      <span id="zoom-display" class="zoom-display">100%</span>
+      <button onclick="toggleStyle()" class="ctrl-btn" id="style-btn" title="Toggle style">✨</button>
+      <button onclick="toggleDark()" class="ctrl-btn" title="Toggle theme">🌙</button>
+      <button onclick="exportSvg()" class="ctrl-btn" title="Export SVG">⬇️</button>
+      <div class="status">
+        <span class="status-dot"></span>
+        <span>Connecting...</span>
+      </div>
     </div>
   </header>
   
   <main>
-    <div class="canvas-container" data-show="$svg">
-      <div data-html="$svg"></div>
+    <div class="canvas-container" style="display:none">
+      <div></div>
     </div>
-    <div class="empty-state" data-show="!$svg">
+    <div class="empty-state">
       <h2>Waiting for drawings...</h2>
       <p>
         The canvas is empty. Use the API to draw shapes:
@@ -154,21 +210,141 @@ export function renderViewer(canvasId: string, wsUrl: string): string {
   
   <div class="info-bar">
     <span>Canvas: <code>${canvasId}</code></span>
-    <span data-text="$shapeCount + ' shapes'"></span>
-    <span data-text="$lastUpdate ? 'Updated: ' + $lastUpdate : ''"></span>
+    <span>0 shapes</span>
+    <span></span>
   </div>
 
   <script type="module">
     const ws = new WebSocket('${wsUrl}');
-    const store = document.body.dataset;
+    const statusDot = document.querySelector('.status-dot');
+    const statusText = document.querySelector('.status span:last-child');
+    const canvasContainer = document.querySelector('.canvas-container');
+    const emptyState = document.querySelector('.empty-state');
+    const svgContainer = canvasContainer.querySelector('div');
+    const shapeCountEl = document.querySelector('.info-bar span:nth-child(2)');
+    const lastUpdateEl = document.querySelector('.info-bar span:nth-child(3)');
+    const zoomDisplay = document.getElementById('zoom-display');
+    
+    let darkMode = ${darkMode};
+    let renderStyle = 'clean'; // 'rough' or 'clean'
+    let zoom = 1;
+    let panX = 0, panY = 0;
+    let isPanning = false;
+    let startX, startY;
+    
+    async function loadSvg() {
+      const rect = canvasContainer.getBoundingClientRect();
+      const w = Math.max(rect.width, 1200);
+      const h = Math.max(rect.height, 800);
+      const resp = await fetch('/canvas/${canvasId}/svg?dark=' + darkMode + '&width=' + w + '&height=' + h + '&style=' + renderStyle);
+      const svg = await resp.text();
+      svgContainer.innerHTML = svg;
+      applyTransform();
+      const hasShapes = svg.includes('<path') || svg.includes('<ellipse') || svg.includes('<text');
+      canvasContainer.style.display = hasShapes ? 'block' : 'none';
+      emptyState.style.display = hasShapes ? 'none' : 'flex';
+    }
+    
+    function applyTransform() {
+      const svg = svgContainer.querySelector('svg');
+      if (svg) {
+        svgContainer.style.transform = 'translate(' + panX + 'px, ' + panY + 'px) scale(' + zoom + ')';
+        svgContainer.style.transformOrigin = 'center center';
+      }
+      if (zoomDisplay) zoomDisplay.textContent = Math.round(zoom * 100) + '%';
+    }
+    
+    // Pan with mouse drag
+    canvasContainer.addEventListener('mousedown', (e) => {
+      if (e.button === 0 || e.button === 1) { // Left or middle click
+        isPanning = true;
+        startX = e.clientX - panX;
+        startY = e.clientY - panY;
+        canvasContainer.style.cursor = 'grabbing';
+      }
+    });
+    
+    document.addEventListener('mousemove', (e) => {
+      if (isPanning) {
+        panX = e.clientX - startX;
+        panY = e.clientY - startY;
+        applyTransform();
+      }
+    });
+    
+    document.addEventListener('mouseup', () => {
+      isPanning = false;
+      canvasContainer.style.cursor = 'grab';
+    });
+    
+    // Zoom with mouse wheel
+    canvasContainer.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const delta = e.deltaY > 0 ? 0.9 : 1.1;
+      zoom = Math.min(Math.max(zoom * delta, 0.1), 5);
+      applyTransform();
+    }, { passive: false });
+    
+    // Keyboard shortcuts
+    document.addEventListener('keydown', (e) => {
+      if (e.key === '0' && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        zoom = 1; panX = 0; panY = 0;
+        applyTransform();
+      }
+      if (e.key === '=' && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        zoom = Math.min(zoom * 1.2, 5);
+        applyTransform();
+      }
+      if (e.key === '-' && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        zoom = Math.max(zoom * 0.8, 0.1);
+        applyTransform();
+      }
+    });
+    
+    // Toggle dark mode
+    window.toggleDark = () => {
+      darkMode = !darkMode;
+      document.body.classList.toggle('light-mode', !darkMode);
+      loadSvg();
+    };
+    
+    // Reset view
+    window.resetView = () => {
+      zoom = 1; panX = 0; panY = 0;
+      applyTransform();
+    };
+    
+    // Toggle render style
+    window.toggleStyle = () => {
+      renderStyle = renderStyle === 'rough' ? 'clean' : 'rough';
+      document.getElementById('style-btn').textContent = renderStyle === 'rough' ? '✏️' : '✨';
+      loadSvg();
+    };
+    
+    // Export SVG
+    window.exportSvg = async () => {
+      const resp = await fetch('/canvas/${canvasId}/svg?dark=' + darkMode + '&width=1920&height=1080&style=' + renderStyle);
+      const svg = await resp.text();
+      const blob = new Blob([svg], { type: 'image/svg+xml' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = '${canvasId}.svg';
+      a.click();
+      URL.revokeObjectURL(url);
+    };
     
     ws.onopen = () => {
-      window.ds.store.connected = true;
+      statusDot.classList.add('connected');
+      statusText.textContent = 'Connected';
     };
     
     ws.onclose = () => {
-      window.ds.store.connected = false;
-      // Reconnect after 2 seconds
+      statusDot.classList.remove('connected');
+      statusText.textContent = 'Disconnected';
       setTimeout(() => location.reload(), 2000);
     };
     
@@ -177,15 +353,14 @@ export function renderViewer(canvasId: string, wsUrl: string): string {
       
       if (data.type === 'state' || data.type === 'update') {
         const canvas = data.canvas;
-        window.ds.store.shapeCount = canvas.shapes.length;
-        window.ds.store.lastUpdate = new Date().toLocaleTimeString();
-        
-        // Fetch rendered SVG
-        const resp = await fetch('/canvas/${canvasId}/svg');
-        const svg = await resp.text();
-        window.ds.store.svg = svg;
+        shapeCountEl.textContent = canvas.shapes.length + ' shapes';
+        lastUpdateEl.textContent = 'Updated: ' + new Date().toLocaleTimeString();
+        await loadSvg();
       }
     };
+    
+    // Load initial SVG
+    loadSvg();
     
     // Keep-alive ping
     setInterval(() => {
