@@ -184,9 +184,11 @@ export function renderViewer(canvasId: string, wsUrl: string, darkMode: boolean 
     <div class="controls">
       <button onclick="resetView()" class="ctrl-btn" title="Reset view (Cmd+0)">⌂</button>
       <span id="zoom-display" class="zoom-display">100%</span>
+      <button onclick="toggleEdit()" class="ctrl-btn" id="edit-btn" title="Edit mode">🔒</button>
       <button onclick="toggleStyle()" class="ctrl-btn" id="style-btn" title="Toggle style">✨</button>
       <button onclick="toggleDark()" class="ctrl-btn" title="Toggle theme">🌙</button>
       <button onclick="exportSvg()" class="ctrl-btn" title="Export SVG">⬇️</button>
+      <button onclick="resetCanvas()" class="ctrl-btn" title="Reset canvas">🔄</button>
       <div class="status">
         <span class="status-dot"></span>
         <span>Connecting...</span>
@@ -227,10 +229,15 @@ export function renderViewer(canvasId: string, wsUrl: string, darkMode: boolean 
     
     let darkMode = ${darkMode};
     let renderStyle = 'clean'; // 'rough' or 'clean'
+    let editMode = false;
     let zoom = 1;
     let panX = 0, panY = 0;
     let isPanning = false;
     let startX, startY;
+    let selectedShape = null;
+    let isDragging = false;
+    let dragStartX, dragStartY;
+    let canvasState = null; // Stores shape data for editing
     
     async function loadSvg() {
       const rect = canvasContainer.getBoundingClientRect();
@@ -253,29 +260,6 @@ export function renderViewer(canvasId: string, wsUrl: string, darkMode: boolean 
       }
       if (zoomDisplay) zoomDisplay.textContent = Math.round(zoom * 100) + '%';
     }
-    
-    // Pan with mouse drag
-    canvasContainer.addEventListener('mousedown', (e) => {
-      if (e.button === 0 || e.button === 1) { // Left or middle click
-        isPanning = true;
-        startX = e.clientX - panX;
-        startY = e.clientY - panY;
-        canvasContainer.style.cursor = 'grabbing';
-      }
-    });
-    
-    document.addEventListener('mousemove', (e) => {
-      if (isPanning) {
-        panX = e.clientX - startX;
-        panY = e.clientY - startY;
-        applyTransform();
-      }
-    });
-    
-    document.addEventListener('mouseup', () => {
-      isPanning = false;
-      canvasContainer.style.cursor = 'grab';
-    });
     
     // Zoom with mouse wheel
     canvasContainer.addEventListener('wheel', (e) => {
@@ -337,6 +321,131 @@ export function renderViewer(canvasId: string, wsUrl: string, darkMode: boolean 
       URL.revokeObjectURL(url);
     };
     
+    // Toggle edit mode
+    window.toggleEdit = () => {
+      editMode = !editMode;
+      document.getElementById('edit-btn').textContent = editMode ? '✏️' : '🔒';
+      canvasContainer.style.cursor = editMode ? 'crosshair' : 'grab';
+      if (!editMode) {
+        selectedShape = null;
+        highlightShape(null);
+      }
+    };
+    
+    // Reset canvas to saved state
+    window.resetCanvas = async () => {
+      if (confirm('Reset all shape positions?')) {
+        // Reload from server
+        location.reload();
+      }
+    };
+    
+    // Find shape at position
+    function findShapeAt(x, y) {
+      if (!canvasState) return null;
+      // Transform click coords to canvas coords
+      const cx = (x - panX) / zoom;
+      const cy = (y - panY) / zoom;
+      
+      // Check shapes in reverse order (top to bottom)
+      for (let i = canvasState.shapes.length - 1; i >= 0; i--) {
+        const s = canvasState.shapes[i];
+        if (s.type === 'text' || s.type === 'line' || s.type === 'arrow') continue;
+        
+        const w = s.width || 100;
+        const h = s.height || 50;
+        if (cx >= s.x && cx <= s.x + w && cy >= s.y && cy <= s.y + h) {
+          return s;
+        }
+      }
+      return null;
+    }
+    
+    // Highlight selected shape
+    function highlightShape(shape) {
+      // Remove existing highlight
+      const existing = svgContainer.querySelector('.shape-highlight');
+      if (existing) existing.remove();
+      
+      if (!shape) return;
+      
+      const svg = svgContainer.querySelector('svg');
+      if (!svg) return;
+      
+      const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      rect.setAttribute('class', 'shape-highlight');
+      rect.setAttribute('x', shape.x - 3);
+      rect.setAttribute('y', shape.y - 3);
+      rect.setAttribute('width', (shape.width || 100) + 6);
+      rect.setAttribute('height', (shape.height || 50) + 6);
+      rect.setAttribute('fill', 'none');
+      rect.setAttribute('stroke', '#3b82f6');
+      rect.setAttribute('stroke-width', '2');
+      rect.setAttribute('stroke-dasharray', '5 3');
+      svg.appendChild(rect);
+    }
+    
+    // Update shape position on server
+    async function updateShapePosition(shape) {
+      await fetch('/canvas/${canvasId}/draw', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'update',
+          shapes: [shape]
+        })
+      });
+    }
+    
+    // Edit mode mouse handlers
+    canvasContainer.addEventListener('mousedown', (e) => {
+      if (editMode) {
+        const rect = canvasContainer.getBoundingClientRect();
+        const shape = findShapeAt(e.clientX - rect.left, e.clientY - rect.top);
+        if (shape) {
+          selectedShape = shape;
+          isDragging = true;
+          dragStartX = e.clientX;
+          dragStartY = e.clientY;
+          highlightShape(shape);
+          e.preventDefault();
+          return;
+        }
+      }
+      // Normal pan behavior
+      if (!editMode && (e.button === 0 || e.button === 1)) {
+        isPanning = true;
+        startX = e.clientX - panX;
+        startY = e.clientY - panY;
+        canvasContainer.style.cursor = 'grabbing';
+      }
+    });
+    
+    document.addEventListener('mousemove', (e) => {
+      if (isDragging && selectedShape) {
+        const dx = (e.clientX - dragStartX) / zoom;
+        const dy = (e.clientY - dragStartY) / zoom;
+        selectedShape.x += dx;
+        selectedShape.y += dy;
+        dragStartX = e.clientX;
+        dragStartY = e.clientY;
+        loadSvg().then(() => highlightShape(selectedShape));
+      } else if (isPanning) {
+        panX = e.clientX - startX;
+        panY = e.clientY - startY;
+        applyTransform();
+      }
+    });
+    
+    document.addEventListener('mouseup', () => {
+      if (isDragging && selectedShape) {
+        updateShapePosition(selectedShape);
+        isDragging = false;
+      }
+      isPanning = false;
+      canvasContainer.style.cursor = editMode ? 'crosshair' : 'grab';
+    });
+    
     ws.onopen = () => {
       statusDot.classList.add('connected');
       statusText.textContent = 'Connected';
@@ -352,8 +461,8 @@ export function renderViewer(canvasId: string, wsUrl: string, darkMode: boolean 
       const data = JSON.parse(event.data);
       
       if (data.type === 'state' || data.type === 'update') {
-        const canvas = data.canvas;
-        shapeCountEl.textContent = canvas.shapes.length + ' shapes';
+        canvasState = data.canvas;
+        shapeCountEl.textContent = canvasState.shapes.length + ' shapes';
         lastUpdateEl.textContent = 'Updated: ' + new Date().toLocaleTimeString();
         await loadSvg();
       }

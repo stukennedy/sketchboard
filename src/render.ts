@@ -284,10 +284,39 @@ function roughCallout(x: number, y: number, w: number, h: number, px: number, py
   return path;
 }
 
+// Map dark-mode colors to light-mode equivalents
+function lightModeColor(color: string): string {
+  const darkToLight: Record<string, string> = {
+    '#ffffff': '#1e1e1e',
+    '#e0e0e0': '#1e1e1e',
+    '#94a3b8': '#475569',  // slate
+    '#64748b': '#334155',  // slate darker
+    '#f87171': '#dc2626',  // red
+    '#fb923c': '#ea580c',  // orange
+    '#fbbf24': '#d97706',  // amber
+    '#facc15': '#ca8a04',  // yellow
+    '#34d399': '#059669',  // green
+    '#22c55e': '#16a34a',  // green
+    '#60a5fa': '#2563eb',  // blue
+    '#3b82f6': '#1d4ed8',  // blue
+    '#c084fc': '#9333ea',  // purple
+    '#a855f7': '#7c3aed',  // purple
+    '#f472b6': '#db2777',  // pink
+    '#ec4899': '#be185d',  // pink
+  };
+  const lower = color.toLowerCase();
+  return darkToLight[lower] || color;
+}
+
 // Render a single shape to SVG elements
 function renderShape(shape: Shape, rand: () => number, roughness: number = 1, darkMode: boolean = false, cleanStyle: boolean = false): string {
   const defaultStroke = darkMode ? '#e0e0e0' : '#1e1e1e';
-  const stroke = shape.strokeColor || defaultStroke;
+  let stroke = shape.strokeColor || defaultStroke;
+  
+  // Apply light mode color mapping
+  if (!darkMode && shape.strokeColor) {
+    stroke = lightModeColor(shape.strokeColor);
+  }
   const fill = shape.fillColor || 'none';
   const strokeWidth = shape.strokeWidth || 2;
   const opacity = shape.opacity ?? 1;
@@ -559,16 +588,28 @@ function renderCleanShape(shape: Shape, stroke: string, fill: string, strokeWidt
       
       let path = '';
       if (shape.curved && pts.length >= 2) {
-        // Smooth bezier curve
+        // Smooth bezier curve through all points
         path = `M ${pts[0].x} ${pts[0].y}`;
         if (pts.length === 2) {
+          // Simple curve between two points
           const dx = pts[1].x - pts[0].x, dy = pts[1].y - pts[0].y;
-          const cx1 = pts[0].x + dx * 0.5, cy1 = pts[0].y;
-          const cx2 = pts[0].x + dx * 0.5, cy2 = pts[1].y;
+          const cx1 = pts[0].x + dx * 0.3, cy1 = pts[0].y + dy * 0.1;
+          const cx2 = pts[0].x + dx * 0.7, cy2 = pts[1].y - dy * 0.1;
           path += ` C ${cx1} ${cy1}, ${cx2} ${cy2}, ${pts[1].x} ${pts[1].y}`;
         } else {
-          for (let i = 1; i < pts.length; i++) {
-            path += ` L ${pts[i].x} ${pts[i].y}`;
+          // Catmull-Rom to Bezier conversion for smooth curves through points
+          for (let i = 0; i < pts.length - 1; i++) {
+            const p0 = pts[Math.max(0, i - 1)];
+            const p1 = pts[i];
+            const p2 = pts[i + 1];
+            const p3 = pts[Math.min(pts.length - 1, i + 2)];
+            
+            const cp1x = p1.x + (p2.x - p0.x) / 6;
+            const cp1y = p1.y + (p2.y - p0.y) / 6;
+            const cp2x = p2.x - (p3.x - p1.x) / 6;
+            const cp2y = p2.y - (p3.y - p1.y) / 6;
+            
+            path += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${p2.x} ${p2.y}`;
           }
         }
       } else {
