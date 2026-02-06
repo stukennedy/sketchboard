@@ -393,12 +393,31 @@ export function renderViewer(canvasId: string, wsUrl: string, darkMode: boolean 
       }
     };
     
-    // Reset canvas to saved state
+    // Reset canvas to initial/saved state
     window.resetCanvas = async () => {
-      if (confirm('Reset all shape positions?')) {
-        // Reload from server
-        location.reload();
+      if (confirm('Reset to original layout?')) {
+        const resp = await fetch('/canvas/${canvasId}/draw', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'reset' })
+        });
+        const result = await resp.json();
+        if (!result.ok) {
+          alert(result.message || 'No saved state to reset to');
+        }
+        // WebSocket will broadcast the update
       }
+    };
+    
+    // Save current state as the "original" snapshot
+    window.saveSnapshot = async () => {
+      const resp = await fetch('/canvas/${canvasId}/draw', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'snapshot' })
+      });
+      const result = await resp.json();
+      alert(result.ok ? 'Snapshot saved!' : 'Failed to save snapshot');
     };
     
     // Convert screen coords to canvas coords

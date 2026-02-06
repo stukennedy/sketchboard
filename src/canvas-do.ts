@@ -5,6 +5,7 @@ import type { CanvasState, Shape, DrawCommand } from '@/types';
 export class CanvasDO implements DurableObject {
   private state: DurableObjectState;
   private canvas: CanvasState | null = null;
+  private initialCanvas: CanvasState | null = null;
 
   constructor(state: DurableObjectState) {
     this.state = state;
@@ -28,6 +29,18 @@ export class CanvasDO implements DurableObject {
       await this.state.storage.put('canvas', this.canvas);
     }
     return this.canvas;
+  }
+
+  private async loadInitialCanvas(): Promise<CanvasState | null> {
+    if (this.initialCanvas) return this.initialCanvas;
+    this.initialCanvas = await this.state.storage.get<CanvasState>('initialCanvas') || null;
+    return this.initialCanvas;
+  }
+
+  private async saveInitialCanvas(canvas: CanvasState): Promise<void> {
+    // Deep clone to avoid reference issues
+    this.initialCanvas = JSON.parse(JSON.stringify(canvas));
+    await this.state.storage.put('initialCanvas', this.initialCanvas);
   }
 
   private async saveCanvas(): Promise<void> {
@@ -74,14 +87,41 @@ export class CanvasDO implements DurableObject {
       return Response.json(canvas);
     }
     
-    // POST - apply draw command
+    // POST - apply draw command or special actions
     if (request.method === 'POST') {
-      const cmd = await request.json() as DrawCommand;
+      const body = await request.json() as DrawCommand & { action: string };
+      
+      // Special action: save current state as initial (snapshot)
+      if (body.action === 'snapshot') {
+        await this.saveInitialCanvas(canvas);
+        return Response.json({ ok: true, message: 'Snapshot saved' });
+      }
+      
+      // Special action: reset to initial state
+      if (body.action === 'reset') {
+        const initial = await this.loadInitialCanvas();
+        if (initial) {
+          canvas.shapes = JSON.parse(JSON.stringify(initial.shapes));
+          canvas.viewport = { ...initial.viewport };
+          await this.saveCanvas();
+          this.broadcast({ type: 'state', canvas });
+          return Response.json({ ok: true, message: 'Reset to initial state', shapeCount: canvas.shapes.length });
+        } else {
+          return Response.json({ ok: false, message: 'No initial state saved' }, { status: 404 });
+        }
+      }
+      
+      const cmd = body as DrawCommand;
       
       switch (cmd.action) {
         case 'add':
           if (cmd.shapes) {
             canvas.shapes.push(...cmd.shapes);
+            // Auto-save as initial if this is the first content and no initial exists
+            const initial = await this.loadInitialCanvas();
+            if (!initial && canvas.shapes.length > 0) {
+              await this.saveInitialCanvas(canvas);
+            }
           }
           break;
           
