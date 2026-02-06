@@ -239,17 +239,52 @@ export function renderViewer(canvasId: string, wsUrl: string, darkMode: boolean 
     let dragStartX, dragStartY;
     let canvasState = null; // Stores shape data for editing
     
+    let initialLoad = true;
+    let contentBounds = { minX: 0, minY: 0, maxX: 1200, maxY: 800 };
+    
     async function loadSvg() {
       const rect = canvasContainer.getBoundingClientRect();
-      const w = Math.max(rect.width, 1200);
-      const h = Math.max(rect.height, 800);
+      // Request larger canvas to allow for infinite canvas feel
+      const w = Math.max(rect.width * 2, 2400);
+      const h = Math.max(rect.height * 2, 1600);
       const resp = await fetch('/canvas/${canvasId}/svg?dark=' + darkMode + '&width=' + w + '&height=' + h + '&style=' + renderStyle);
       const svg = await resp.text();
       svgContainer.innerHTML = svg;
+      
+      // Extract viewBox to understand content bounds
+      const svgEl = svgContainer.querySelector('svg');
+      if (svgEl) {
+        const vb = svgEl.getAttribute('viewBox')?.split(' ').map(Number);
+        if (vb && vb.length === 4) {
+          contentBounds = { minX: vb[0], minY: vb[1], maxX: vb[0] + vb[2], maxY: vb[1] + vb[3] };
+        }
+        // Make SVG fill the container and be responsive
+        svgEl.style.width = '100%';
+        svgEl.style.height = '100%';
+        svgEl.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+      }
+      
+      // Center view on first load
+      if (initialLoad && canvasState && canvasState.shapes.length > 0) {
+        centerOnContent();
+        initialLoad = false;
+      }
+      
       applyTransform();
-      const hasShapes = svg.includes('<path') || svg.includes('<ellipse') || svg.includes('<text');
+      const hasShapes = svg.includes('<path') || svg.includes('<ellipse') || svg.includes('<text') || svg.includes('<circle') || svg.includes('<polygon');
       canvasContainer.style.display = hasShapes ? 'block' : 'none';
       emptyState.style.display = hasShapes ? 'none' : 'flex';
+    }
+    
+    function centerOnContent() {
+      // Center view on the content
+      const rect = canvasContainer.getBoundingClientRect();
+      const contentCenterX = (contentBounds.minX + contentBounds.maxX) / 2;
+      const contentCenterY = (contentBounds.minY + contentBounds.maxY) / 2;
+      // Pan will be calculated during applyTransform - just reset to center
+      panX = 0;
+      panY = 0;
+      zoom = 1;
     }
     
     function applyTransform() {
@@ -261,11 +296,22 @@ export function renderViewer(canvasId: string, wsUrl: string, darkMode: boolean 
       if (zoomDisplay) zoomDisplay.textContent = Math.round(zoom * 100) + '%';
     }
     
-    // Zoom with mouse wheel
+    // Zoom with mouse wheel - zoom towards cursor position
     canvasContainer.addEventListener('wheel', (e) => {
       e.preventDefault();
+      const rect = canvasContainer.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left - rect.width / 2;
+      const mouseY = e.clientY - rect.top - rect.height / 2;
+      
+      const oldZoom = zoom;
       const delta = e.deltaY > 0 ? 0.9 : 1.1;
-      zoom = Math.min(Math.max(zoom * delta, 0.1), 5);
+      zoom = Math.min(Math.max(zoom * delta, 0.05), 10); // Allow more zoom range
+      
+      // Adjust pan to zoom towards cursor
+      const zoomRatio = zoom / oldZoom;
+      panX = mouseX - (mouseX - panX) * zoomRatio;
+      panY = mouseY - (mouseY - panY) * zoomRatio;
+      
       applyTransform();
     }, { passive: false });
     
@@ -273,17 +319,21 @@ export function renderViewer(canvasId: string, wsUrl: string, darkMode: boolean 
     document.addEventListener('keydown', (e) => {
       if (e.key === '0' && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
+        resetView();
+      }
+      if (e.key === '1' && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
         zoom = 1; panX = 0; panY = 0;
         applyTransform();
       }
-      if (e.key === '=' && (e.metaKey || e.ctrlKey)) {
+      if ((e.key === '=' || e.key === '+') && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
-        zoom = Math.min(zoom * 1.2, 5);
+        zoom = Math.min(zoom * 1.2, 10);
         applyTransform();
       }
       if (e.key === '-' && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
-        zoom = Math.max(zoom * 0.8, 0.1);
+        zoom = Math.max(zoom * 0.8, 0.05);
         applyTransform();
       }
     });
@@ -295,9 +345,20 @@ export function renderViewer(canvasId: string, wsUrl: string, darkMode: boolean 
       loadSvg();
     };
     
-    // Reset view
+    // Reset view - fit content to viewport
     window.resetView = () => {
-      zoom = 1; panX = 0; panY = 0;
+      const rect = canvasContainer.getBoundingClientRect();
+      const contentW = contentBounds.maxX - contentBounds.minX;
+      const contentH = contentBounds.maxY - contentBounds.minY;
+      
+      // Calculate zoom to fit content with some padding
+      const zoomX = (rect.width * 0.9) / contentW;
+      const zoomY = (rect.height * 0.9) / contentH;
+      zoom = Math.min(zoomX, zoomY, 1); // Don't zoom in past 100%
+      zoom = Math.max(zoom, 0.05); // Minimum zoom
+      
+      panX = 0;
+      panY = 0;
       applyTransform();
     };
     

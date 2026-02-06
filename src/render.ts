@@ -745,6 +745,44 @@ function escapeXml(str: string): string {
     .replace(/'/g, '&apos;');
 }
 
+// Calculate bounds from all shapes with padding
+function calculateBounds(shapes: Shape[], padding: number = 200): { minX: number; minY: number; maxX: number; maxY: number } {
+  if (shapes.length === 0) {
+    return { minX: 0, minY: 0, maxX: 1200, maxY: 800 };
+  }
+  
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  
+  for (const shape of shapes) {
+    const x = shape.x ?? 0;
+    const y = shape.y ?? 0;
+    const w = shape.width ?? 100;
+    const h = shape.height ?? 50;
+    
+    // Handle arrow/line points
+    if ((shape.type === 'arrow' || shape.type === 'line') && shape.points) {
+      for (const p of shape.points) {
+        minX = Math.min(minX, p.x);
+        minY = Math.min(minY, p.y);
+        maxX = Math.max(maxX, p.x);
+        maxY = Math.max(maxY, p.y);
+      }
+    } else {
+      minX = Math.min(minX, x);
+      minY = Math.min(minY, y);
+      maxX = Math.max(maxX, x + w);
+      maxY = Math.max(maxY, y + h);
+    }
+  }
+  
+  return {
+    minX: minX - padding,
+    minY: minY - padding,
+    maxX: maxX + padding,
+    maxY: maxY + padding
+  };
+}
+
 // Render full canvas to SVG
 export function renderToSvg(state: CanvasState, options: RenderOptions = {}): string {
   const width = options.width || 800;
@@ -756,11 +794,16 @@ export function renderToSvg(state: CanvasState, options: RenderOptions = {}): st
   const darkMode = options.darkMode ?? false;
   const bgColor = darkMode ? '#1a1a2e' : (state.backgroundColor || '#ffffff');
   
-  // Calculate viewBox based on viewport
-  const vx = state.viewport.x;
-  const vy = state.viewport.y;
-  const vw = width / state.viewport.zoom;
-  const vh = height / state.viewport.zoom;
+  // Calculate viewBox from shape bounds (infinite canvas approach)
+  const bounds = calculateBounds(state.shapes, 500);
+  const contentW = bounds.maxX - bounds.minX;
+  const contentH = bounds.maxY - bounds.minY;
+  
+  // Use the larger of viewport size or content bounds
+  const vw = Math.max(contentW, width);
+  const vh = Math.max(contentH, height);
+  const vx = bounds.minX;
+  const vy = bounds.minY;
   
   const cleanStyle = options.style === 'clean';
   
@@ -775,6 +818,9 @@ export function renderToSvg(state: CanvasState, options: RenderOptions = {}): st
   ${shapes}
 </svg>`;
 }
+
+// Export bounds calculation for API use
+export { calculateBounds };
 
 // Render to HTML for embedding (no XML declaration)
 export function renderToSvgHtml(state: CanvasState, options: RenderOptions = {}): string {
