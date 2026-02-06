@@ -24,6 +24,121 @@ const app = new Hono<{ Bindings: Env }>();
 // Enable CORS for API access
 app.use('/*', cors());
 
+// LLM-friendly documentation endpoint
+app.get('/llms.txt', (c) => {
+  const baseUrl = `https://${c.req.header('host') || 'sketch.voxwise.ai'}`;
+  return c.text(`# Sketchboard API
+
+Hand-drawn diagram server. Create diagrams via HTTP API.
+
+Base URL: ${baseUrl}
+
+## Endpoints
+
+POST /canvas/:id/draw - Add/update/delete shapes
+GET /canvas/:id/state - Get canvas state (JSON)
+GET /canvas/:id/svg - Render to SVG
+GET /canvas/:id/svg?style=clean - Clean (non-sketchy) SVG
+GET /canvas/:id/png - Render to PNG
+DELETE /canvas/:id - Clear canvas
+
+## Draw Commands
+
+\`\`\`json
+{ "action": "add", "shapes": [...] }
+{ "action": "update", "shapes": [...] }
+{ "action": "delete", "shapeIds": ["id1", "id2"] }
+{ "action": "clear" }
+\`\`\`
+
+## Shape Types
+
+All shapes require: id, type, x, y
+Optional on all: strokeColor, fillColor, strokeWidth, opacity
+
+### Box Shapes (all support width, height, label)
+- rectangle
+- ellipse  
+- diamond
+- cylinder (database symbol)
+- cloud (external service)
+- hexagon (process)
+- document (curled corner)
+- person (stick figure)
+- callout (speech bubble, add pointerX/pointerY)
+
+### Lines
+- line: { points: [{x,y}, ...] }
+- arrow: { points: [{x,y}, ...], ...options }
+
+### Text
+- text: { text, fontSize? }
+
+## Arrow Options
+
+\`\`\`typescript
+{
+  points: [{x, y}, {x, y}],  // At least 2 points
+  
+  // Bind to shapes (arrows follow when shapes move)
+  startBinding?: { shapeId: string, anchor: "top"|"bottom"|"left"|"right"|"center"|"auto" },
+  endBinding?: { shapeId: string, anchor: "top"|"bottom"|"left"|"right"|"center"|"auto" },
+  
+  // Styling
+  curved?: boolean,      // Bezier curve
+  dashed?: boolean,      // Dashed line
+  arrowHead?: "arrow"|"triangle"|"diamond"|"circle"|"none",
+  arrowTail?: "arrow"|"triangle"|"diamond"|"circle"|"none",
+  
+  // Label along arrow path
+  label?: string,
+  labelPosition?: number  // 0=start, 0.5=middle (default), 1=end
+}
+\`\`\`
+
+## Example: Architecture Diagram
+
+\`\`\`bash
+curl -X POST ${baseUrl}/canvas/mydiagram/draw \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "action": "add",
+    "shapes": [
+      { "id": "client", "type": "person", "x": 50, "y": 100, "width": 60, "height": 80, "label": "User" },
+      { "id": "api", "type": "rectangle", "x": 200, "y": 100, "width": 120, "height": 80, "label": "API", "fillColor": "#dcfce7" },
+      { "id": "db", "type": "cylinder", "x": 400, "y": 100, "width": 100, "height": 80, "label": "DB", "fillColor": "#dbeafe" },
+      { 
+        "id": "a1", "type": "arrow", "x": 0, "y": 0,
+        "points": [{"x": 110, "y": 140}, {"x": 200, "y": 140}],
+        "startBinding": { "shapeId": "client", "anchor": "right" },
+        "endBinding": { "shapeId": "api", "anchor": "left" },
+        "label": "REST"
+      },
+      { 
+        "id": "a2", "type": "arrow", "x": 0, "y": 0,
+        "points": [{"x": 320, "y": 140}, {"x": 400, "y": 140}],
+        "startBinding": { "shapeId": "api", "anchor": "right" },
+        "endBinding": { "shapeId": "db", "anchor": "left" },
+        "label": "SQL"
+      }
+    ]
+  }'
+\`\`\`
+
+Then get the SVG:
+\`\`\`bash
+curl ${baseUrl}/canvas/mydiagram/svg > diagram.svg
+\`\`\`
+
+## Tips
+
+- Shape IDs are auto-generated if omitted
+- Use bindings so arrows stay connected when shapes move
+- Canvas IDs can be any string (creates new canvas if doesn't exist)
+- Multiple users can view same canvas with live updates
+`, 200, { 'Content-Type': 'text/plain; charset=utf-8' });
+});
+
 // Home page - list endpoints
 app.get('/', (c) => {
   return c.html(`<!DOCTYPE html>
