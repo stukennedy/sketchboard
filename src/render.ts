@@ -321,7 +321,7 @@ function renderShape(shape: Shape, rand: () => number, roughness: number = 1, da
   const strokeWidth = shape.strokeWidth || 2;
   const opacity = shape.opacity ?? 1;
   
-  const style = `stroke="${stroke}" fill="${fill}" stroke-width="${strokeWidth}" opacity="${opacity}"`;
+  const style = `stroke="${stroke}" stroke-width="${strokeWidth}" opacity="${opacity}"`;
   const styleNoFill = `stroke="${stroke}" fill="none" stroke-width="${strokeWidth}" opacity="${opacity}"`;
   const fillStyle = fill !== 'none' ? `fill="${fill}" opacity="${opacity * 0.3}"` : '';
   

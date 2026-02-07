@@ -20,5 +20,15 @@ bindings = [
 tag = "v1"
 new_sqlite_classes = ["CanvasDO"]
 
+[[rules]]
+type = "CompiledWasm"
+globs = ["**/*.wasm"]
+fallthrough = false
+
+[[rules]]
+type = "Data"
+globs = ["**/*.ttf"]
+fallthrough = false
+
 [vars]
 ENVIRONMENT = "production"

@@ -7,6 +7,10 @@ import { CanvasDO } from '@/canvas-do';
 import { renderToSvg, renderToSvgHtml } from '@/render';
 import { renderViewer } from '@/viewer';
 import { Resvg, initWasm } from '@resvg/resvg-wasm';
+// @ts-ignore — Cloudflare Workers imports .wasm as WebAssembly.Module
+import resvgWasm from '../node_modules/@resvg/resvg-wasm/index_bg.wasm';
+// @ts-ignore — binary import for font bundling
+import dejaVuSansFont from '../fonts/DejaVuSans.ttf';
 import type { CanvasState, Shape, DrawCommand, ExcalidrawFile } from '@/types';
 
 // Track WASM initialization
@@ -318,14 +322,18 @@ app.get('/canvas/:id/png', async (c) => {
   
   // Initialize WASM if needed
   if (!wasmInitialized) {
-    // Fetch WASM from CDN
-    const wasmResp = await fetch('https://unpkg.com/@aspect-ratio/core-wasm@0.0.0/index_bg.wasm');
-    await initWasm(fetch('https://unpkg.com/@resvg/resvg-wasm@2.6.2/index_bg.wasm'));
+    await initWasm(resvgWasm);
     wasmInitialized = true;
   }
   
+  const fontBuffer = new Uint8Array(dejaVuSansFont);
   const resvg = new Resvg(svg, {
-    fitTo: { mode: 'width', value: width }
+    fitTo: { mode: 'width', value: width },
+    font: {
+      fontBuffers: [fontBuffer],
+      defaultFontFamily: 'DejaVu Sans',
+      loadSystemFonts: false,
+    },
   });
   const pngData = resvg.render();
   const pngBuffer = pngData.asPng();
