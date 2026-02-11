@@ -297,7 +297,7 @@ app.get('/canvas/:id/svg', async (c) => {
   const height = parseInt(c.req.query('height') || '600');
   const roughness = parseFloat(c.req.query('roughness') || '1');
   const darkMode = c.req.query('dark') === 'true' || c.req.query('dark') === '1';
-  const style = (c.req.query('style') as 'rough' | 'clean') || 'rough';
+  const style = (c.req.query('style') as 'rough' | 'clean' | 'pro') || 'rough';
   
   const svg = renderToSvgHtml(state, { width, height, roughness, darkMode, style });
   

@@ -310,6 +310,21 @@ export function renderViewer(canvasId: string, wsUrl: string, darkMode: boolean 
       opacity: 0.5;
     }
 
+    /* ═══════════════ PRO MODE ═══════════════ */
+    .canvas-wrapper.pro-mode {
+      background: 
+        radial-gradient(circle at 50% 50%, rgba(0, 255, 136, 0.03) 0%, transparent 70%),
+        #0f0f1e;
+    }
+    
+    .canvas-wrapper.pro-mode::before {
+      background-image: 
+        linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
+      background-size: 40px 40px;
+      opacity: 1;
+    }
+
     @font-face {
       font-family: 'Virgil';
       src: url('https://excalidraw.com/Virgil.woff2') format('woff2');
@@ -524,8 +539,14 @@ export function renderViewer(canvasId: string, wsUrl: string, darkMode: boolean 
     window.zoomOut = () => { zoom = Math.max(zoom * 0.8, 0.05); applyTransform(); };
     
     window.toggleStyle = () => {
-      renderStyle = renderStyle === 'rough' ? 'clean' : 'rough';
-      document.getElementById('btn-style').classList.toggle('active', renderStyle === 'rough');
+      const cycle = { clean: 'rough', rough: 'pro', pro: 'clean' };
+      renderStyle = cycle[renderStyle] || 'clean';
+      const btn = document.getElementById('btn-style');
+      btn.classList.toggle('active', renderStyle !== 'clean');
+      // Update tooltip with current style
+      btn.setAttribute('data-tooltip', 'Style: ' + renderStyle);
+      // Toggle pro mode background
+      wrapper.classList.toggle('pro-mode', renderStyle === 'pro');
       loadSvg();
     };
     

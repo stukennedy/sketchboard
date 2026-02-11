@@ -9,7 +9,7 @@ interface RenderOptions {
   roughness?: number;
   seed?: number;
   darkMode?: boolean;
-  style?: 'rough' | 'clean';  // rough = hand-drawn, clean = crisp SVG
+  style?: 'rough' | 'clean' | 'pro';  // rough = hand-drawn, clean = crisp SVG, pro = polished/professional
 }
 
 // Calculate optimal font size for text to fit in a shape
@@ -760,6 +760,405 @@ function renderCleanShape(shape: Shape, stroke: string, fill: string, strokeWidt
   }
 }
 
+// ═══════════════════════════════════════
+// PRO STYLE — Professional/polished rendering
+// ═══════════════════════════════════════
+
+// Pro mode color palette — maps fill colors to accent colors with glow
+const PRO_COLORS: Record<string, { accent: string; glow: string; gradTop: string; gradBot: string }> = {
+  // Cyan/teal family
+  '#00d4ff': { accent: '#00d4ff', glow: 'rgba(0, 212, 255, 0.3)', gradTop: '#0d2a3a', gradBot: '#0a1628' },
+  '#dbeafe': { accent: '#00d4ff', glow: 'rgba(0, 212, 255, 0.3)', gradTop: '#0d2a3a', gradBot: '#0a1628' },
+  '#bae6fd': { accent: '#00d4ff', glow: 'rgba(0, 212, 255, 0.3)', gradTop: '#0d2a3a', gradBot: '#0a1628' },
+  '#67e8f9': { accent: '#00d4ff', glow: 'rgba(0, 212, 255, 0.3)', gradTop: '#0d2a3a', gradBot: '#0a1628' },
+  '#22d3ee': { accent: '#00d4ff', glow: 'rgba(0, 212, 255, 0.3)', gradTop: '#0d2a3a', gradBot: '#0a1628' },
+  // Green family
+  '#00ff88': { accent: '#00ff88', glow: 'rgba(0, 255, 136, 0.3)', gradTop: '#0d2a1e', gradBot: '#0a1628' },
+  '#dcfce7': { accent: '#00ff88', glow: 'rgba(0, 255, 136, 0.3)', gradTop: '#0d2a1e', gradBot: '#0a1628' },
+  '#bbf7d0': { accent: '#00ff88', glow: 'rgba(0, 255, 136, 0.3)', gradTop: '#0d2a1e', gradBot: '#0a1628' },
+  '#22c55e': { accent: '#00ff88', glow: 'rgba(0, 255, 136, 0.3)', gradTop: '#0d2a1e', gradBot: '#0a1628' },
+  '#34d399': { accent: '#00ff88', glow: 'rgba(0, 255, 136, 0.3)', gradTop: '#0d2a1e', gradBot: '#0a1628' },
+  // Orange family
+  '#ff9f43': { accent: '#ff9f43', glow: 'rgba(255, 159, 67, 0.3)', gradTop: '#2a1d0d', gradBot: '#0a1628' },
+  '#fef3c7': { accent: '#ff9f43', glow: 'rgba(255, 159, 67, 0.3)', gradTop: '#2a1d0d', gradBot: '#0a1628' },
+  '#fed7aa': { accent: '#ff9f43', glow: 'rgba(255, 159, 67, 0.3)', gradTop: '#2a1d0d', gradBot: '#0a1628' },
+  '#fb923c': { accent: '#ff9f43', glow: 'rgba(255, 159, 67, 0.3)', gradTop: '#2a1d0d', gradBot: '#0a1628' },
+  '#f59e0b': { accent: '#ff9f43', glow: 'rgba(255, 159, 67, 0.3)', gradTop: '#2a1d0d', gradBot: '#0a1628' },
+  // Purple family
+  '#a855f7': { accent: '#a855f7', glow: 'rgba(168, 85, 247, 0.3)', gradTop: '#1e0d2a', gradBot: '#0a1628' },
+  '#e9d5ff': { accent: '#a855f7', glow: 'rgba(168, 85, 247, 0.3)', gradTop: '#1e0d2a', gradBot: '#0a1628' },
+  '#c084fc': { accent: '#a855f7', glow: 'rgba(168, 85, 247, 0.3)', gradTop: '#1e0d2a', gradBot: '#0a1628' },
+  '#9333ea': { accent: '#a855f7', glow: 'rgba(168, 85, 247, 0.3)', gradTop: '#1e0d2a', gradBot: '#0a1628' },
+  // Pink family
+  '#ff6b9d': { accent: '#ff6b9d', glow: 'rgba(255, 107, 157, 0.3)', gradTop: '#2a0d1e', gradBot: '#0a1628' },
+  '#fce7f3': { accent: '#ff6b9d', glow: 'rgba(255, 107, 157, 0.3)', gradTop: '#2a0d1e', gradBot: '#0a1628' },
+  '#f472b6': { accent: '#ff6b9d', glow: 'rgba(255, 107, 157, 0.3)', gradTop: '#2a0d1e', gradBot: '#0a1628' },
+  '#ec4899': { accent: '#ff6b9d', glow: 'rgba(255, 107, 157, 0.3)', gradTop: '#2a0d1e', gradBot: '#0a1628' },
+  // Blue family
+  '#60a5fa': { accent: '#60a5fa', glow: 'rgba(96, 165, 250, 0.3)', gradTop: '#0d1e2a', gradBot: '#0a1628' },
+  '#93c5fd': { accent: '#60a5fa', glow: 'rgba(96, 165, 250, 0.3)', gradTop: '#0d1e2a', gradBot: '#0a1628' },
+  '#3b82f6': { accent: '#60a5fa', glow: 'rgba(96, 165, 250, 0.3)', gradTop: '#0d1e2a', gradBot: '#0a1628' },
+  // Yellow family
+  '#fbbf24': { accent: '#fbbf24', glow: 'rgba(251, 191, 36, 0.3)', gradTop: '#2a250d', gradBot: '#0a1628' },
+  '#fef08a': { accent: '#fbbf24', glow: 'rgba(251, 191, 36, 0.3)', gradTop: '#2a250d', gradBot: '#0a1628' },
+  '#facc15': { accent: '#fbbf24', glow: 'rgba(251, 191, 36, 0.3)', gradTop: '#2a250d', gradBot: '#0a1628' },
+  // Red family
+  '#f87171': { accent: '#ff6b9d', glow: 'rgba(255, 107, 157, 0.3)', gradTop: '#2a0d0d', gradBot: '#0a1628' },
+  '#fca5a5': { accent: '#ff6b9d', glow: 'rgba(255, 107, 157, 0.3)', gradTop: '#2a0d0d', gradBot: '#0a1628' },
+  '#ef4444': { accent: '#ff6b9d', glow: 'rgba(255, 107, 157, 0.3)', gradTop: '#2a0d0d', gradBot: '#0a1628' },
+};
+
+// Default pro accent (when no fill color matches)
+const PRO_DEFAULT = { accent: '#00d4ff', glow: 'rgba(0, 212, 255, 0.3)', gradTop: '#0d2a3a', gradBot: '#0a1628' };
+
+function getProColor(fillColor: string | undefined): typeof PRO_DEFAULT {
+  if (!fillColor || fillColor === 'none') return PRO_DEFAULT;
+  const lower = fillColor.toLowerCase();
+  return PRO_COLORS[lower] || PRO_DEFAULT;
+}
+
+// Generate a unique filter/gradient ID from a color
+function colorId(hex: string): string {
+  return hex.replace('#', '').replace(/[^a-zA-Z0-9]/g, '');
+}
+
+// Generate SVG <defs> block for pro mode
+function generateProDefs(shapes: Shape[]): string {
+  // Collect unique accent colors used
+  const usedColors = new Set<string>();
+  for (const shape of shapes) {
+    const pc = getProColor(shape.fillColor);
+    usedColors.add(pc.accent);
+  }
+  // Always include default
+  usedColors.add(PRO_DEFAULT.accent);
+
+  let defs = '';
+
+  // Background gradient
+  defs += `
+    <linearGradient id="pro-bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f0f1e"/>
+      <stop offset="50%" stop-color="#1a1a2e"/>
+      <stop offset="100%" stop-color="#16213e"/>
+    </linearGradient>`;
+
+  // Grid pattern
+  defs += `
+    <pattern id="pro-grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#ffffff" stroke-opacity="0.03" stroke-width="0.5"/>
+    </pattern>`;
+
+  // Glow filters for each used color
+  for (const accent of usedColors) {
+    const id = colorId(accent);
+    defs += `
+    <filter id="pro-glow-${id}" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="4" result="blur"/>
+      <feFlood flood-color="${accent}" flood-opacity="0.3" result="color"/>
+      <feComposite in="color" in2="blur" operator="in" result="glow"/>
+      <feMerge><feMergeNode in="glow"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>`;
+  }
+
+  // Drop shadow filter
+  defs += `
+    <filter id="pro-shadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#000000" flood-opacity="0.5"/>
+    </filter>`;
+
+  // Gradient fills for each used color
+  for (const accent of usedColors) {
+    const id = colorId(accent);
+    // Find the matching PRO_COLORS entry
+    let gradTop = '#0d1b2a';
+    let gradBot = '#0a1628';
+    for (const [, val] of Object.entries(PRO_COLORS)) {
+      if (val.accent === accent) {
+        gradTop = val.gradTop;
+        gradBot = val.gradBot;
+        break;
+      }
+    }
+    defs += `
+    <linearGradient id="pro-grad-${id}" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="${gradTop}"/>
+      <stop offset="100%" stop-color="${gradBot}"/>
+    </linearGradient>`;
+  }
+
+  // Arrow markers for each color
+  for (const accent of usedColors) {
+    const id = colorId(accent);
+    defs += `
+    <marker id="pro-arrow-${id}" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+      <path d="M0,0 L10,3.5 L0,7 Z" fill="${accent}" opacity="0.8"/>
+    </marker>`;
+  }
+  // White/default arrow marker
+  defs += `
+    <marker id="pro-arrow-default" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+      <path d="M0,0 L10,3.5 L0,7 Z" fill="#e2e8f0" opacity="0.7"/>
+    </marker>`;
+
+  return defs;
+}
+
+// Render a shape in professional/polished style
+function renderProShape(shape: Shape, darkMode: boolean): string {
+  const pc = getProColor(shape.fillColor);
+  const accent = pc.accent;
+  const accentId = colorId(accent);
+  const strokeWidth = shape.strokeWidth || 1.2;
+  const opacity = shape.opacity ?? 1;
+  const radius = 12;
+  const fontFamily = "-apple-system, system-ui, 'Segoe UI', sans-serif";
+
+  switch (shape.type) {
+    case 'rectangle': {
+      let svg = `<g filter="url(#pro-glow-${accentId})" opacity="${opacity}">`;
+      svg += `<rect x="${shape.x}" y="${shape.y}" width="${shape.width}" height="${shape.height}" rx="${radius}" fill="url(#pro-grad-${accentId})" stroke="${accent}" stroke-width="${strokeWidth}" stroke-opacity="0.7"/>`;
+      if (shape.label) {
+        const cx = shape.x + shape.width / 2;
+        const cy = shape.y + shape.height / 2;
+        const fontSize = calcFontSize(shape.label, shape.width, shape.height);
+        svg += renderProText(cx, cy, shape.label, fontSize, fontFamily);
+      }
+      svg += '</g>';
+      return svg;
+    }
+
+    case 'ellipse': {
+      const cx = shape.x + shape.width / 2;
+      const cy = shape.y + shape.height / 2;
+      let svg = `<g filter="url(#pro-glow-${accentId})" opacity="${opacity}">`;
+      svg += `<ellipse cx="${cx}" cy="${cy}" rx="${shape.width / 2}" ry="${shape.height / 2}" fill="url(#pro-grad-${accentId})" stroke="${accent}" stroke-width="${strokeWidth}" stroke-opacity="0.7"/>`;
+      if (shape.label) {
+        const fontSize = calcFontSize(shape.label, shape.width * 0.8, shape.height * 0.8);
+        svg += renderProText(cx, cy, shape.label, fontSize, fontFamily);
+      }
+      svg += '</g>';
+      return svg;
+    }
+
+    case 'diamond': {
+      const cx = shape.x + shape.width / 2;
+      const cy = shape.y + shape.height / 2;
+      const points = `${cx},${shape.y} ${shape.x + shape.width},${cy} ${cx},${shape.y + shape.height} ${shape.x},${cy}`;
+      let svg = `<g filter="url(#pro-glow-${accentId})" opacity="${opacity}">`;
+      svg += `<polygon points="${points}" fill="url(#pro-grad-${accentId})" stroke="${accent}" stroke-width="${strokeWidth}" stroke-opacity="0.7"/>`;
+      if (shape.label) {
+        const fontSize = calcFontSize(shape.label, shape.width * 0.6, shape.height * 0.6);
+        svg += renderProText(cx, cy, shape.label, fontSize, fontFamily);
+      }
+      svg += '</g>';
+      return svg;
+    }
+
+    case 'line': {
+      if (shape.points.length < 2) return '';
+      const pts = shape.points.map(p => `${shape.x + p.x},${shape.y + p.y}`).join(' ');
+      return `<polyline points="${pts}" fill="none" stroke="${accent}" stroke-width="${strokeWidth}" stroke-opacity="0.5" opacity="${opacity}"/>`;
+    }
+
+    case 'arrow': {
+      if (shape.points.length < 2) return '';
+      const pts = shape.points.map(p => ({ x: shape.x + p.x, y: shape.y + p.y }));
+      const dashStyle = shape.dashed ? ' stroke-dasharray="6 4"' : '';
+
+      // Determine arrow color from source/target shape colors or fall back to accent
+      const arrowColor = accent;
+      const arrowId = accentId;
+
+      let path = '';
+      if (shape.curved && pts.length >= 2) {
+        path = `M ${pts[0].x} ${pts[0].y}`;
+        if (pts.length === 2) {
+          const dx = pts[1].x - pts[0].x, dy = pts[1].y - pts[0].y;
+          const cx1 = pts[0].x + dx * 0.3, cy1 = pts[0].y + dy * 0.1;
+          const cx2 = pts[0].x + dx * 0.7, cy2 = pts[1].y - dy * 0.1;
+          path += ` C ${cx1} ${cy1}, ${cx2} ${cy2}, ${pts[1].x} ${pts[1].y}`;
+        } else {
+          for (let i = 0; i < pts.length - 1; i++) {
+            const p0 = pts[Math.max(0, i - 1)];
+            const p1 = pts[i];
+            const p2 = pts[i + 1];
+            const p3 = pts[Math.min(pts.length - 1, i + 2)];
+            const cp1x = p1.x + (p2.x - p0.x) / 6;
+            const cp1y = p1.y + (p2.y - p0.y) / 6;
+            const cp2x = p2.x - (p3.x - p1.x) / 6;
+            const cp2y = p2.y - (p3.y - p1.y) / 6;
+            path += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${p2.x} ${p2.y}`;
+          }
+        }
+      } else {
+        path = 'M ' + pts.map(p => `${p.x} ${p.y}`).join(' L ');
+      }
+
+      let svg = `<path d="${path}" fill="none" stroke="${arrowColor}" stroke-width="${strokeWidth}" stroke-opacity="0.5" marker-end="url(#pro-arrow-${arrowId})"${dashStyle} opacity="${opacity}"/>`;
+
+      // Arrow label
+      if (shape.label) {
+        const labelPos = shape.labelPosition ?? 0.5;
+        let labelX: number, labelY: number;
+        if (pts.length === 2) {
+          labelX = pts[0].x + (pts[1].x - pts[0].x) * labelPos;
+          labelY = pts[0].y + (pts[1].y - pts[0].y) * labelPos;
+        } else if (pts.length >= 3 && labelPos === 0.5) {
+          const midIdx = Math.floor(pts.length / 2);
+          labelX = pts[midIdx].x;
+          labelY = pts[midIdx].y;
+        } else {
+          const totalIdx = (pts.length - 1) * labelPos;
+          const idx = Math.floor(totalIdx);
+          const t = totalIdx - idx;
+          const p1 = pts[Math.min(idx, pts.length - 1)];
+          const p2 = pts[Math.min(idx + 1, pts.length - 1)];
+          labelX = p1.x + (p2.x - p1.x) * t;
+          labelY = p1.y + (p2.y - p1.y) * t;
+        }
+        if (shape.labelOffset) {
+          labelX += shape.labelOffset.x;
+          labelY += shape.labelOffset.y;
+        }
+        svg += `<text x="${labelX}" y="${labelY - 8}" text-anchor="middle" font-family="${fontFamily}" font-size="10" fill="${arrowColor}" font-style="italic" opacity="0.7">${escapeXml(shape.label)}</text>`;
+      }
+
+      return svg;
+    }
+
+    case 'text': {
+      const fontSize = shape.fontSize || 20;
+      return `<text x="${shape.x}" y="${shape.y}" font-family="${fontFamily}" font-size="${fontSize}" fill="#e2e8f0" font-weight="500" opacity="${opacity}">${escapeXml(shape.text)}</text>`;
+    }
+
+    case 'cylinder': {
+      const ellipseH = shape.height * 0.12;
+      const cx = shape.x + shape.width / 2;
+      let svg = `<g filter="url(#pro-glow-${accentId})" opacity="${opacity}">`;
+      svg += `<rect x="${shape.x}" y="${shape.y + ellipseH}" width="${shape.width}" height="${shape.height - ellipseH * 2}" fill="url(#pro-grad-${accentId})" stroke="${accent}" stroke-width="${strokeWidth}" stroke-opacity="0.7"/>`;
+      svg += `<ellipse cx="${cx}" cy="${shape.y + ellipseH}" rx="${shape.width / 2}" ry="${ellipseH}" fill="url(#pro-grad-${accentId})" stroke="${accent}" stroke-width="${strokeWidth}" stroke-opacity="0.7"/>`;
+      svg += `<ellipse cx="${cx}" cy="${shape.y + shape.height - ellipseH}" rx="${shape.width / 2}" ry="${ellipseH}" fill="url(#pro-grad-${accentId})" stroke="${accent}" stroke-width="${strokeWidth}" stroke-opacity="0.7"/>`;
+      if (shape.label) {
+        const fontSize = calcFontSize(shape.label, shape.width * 0.8, shape.height * 0.5);
+        svg += renderProText(cx, shape.y + shape.height / 2, shape.label, fontSize, fontFamily);
+      }
+      svg += '</g>';
+      return svg;
+    }
+
+    case 'cloud': {
+      const cx = shape.x + shape.width / 2;
+      const cy = shape.y + shape.height / 2;
+      const rx = shape.width / 2, ry = shape.height / 2;
+      const cloudPath = `M ${shape.x + rx * 0.3} ${shape.y + ry * 1.2} 
+        Q ${shape.x} ${cy} ${shape.x + rx * 0.3} ${shape.y + ry * 0.5}
+        Q ${shape.x + rx * 0.3} ${shape.y} ${cx} ${shape.y + ry * 0.3}
+        Q ${shape.x + shape.width - rx * 0.3} ${shape.y} ${shape.x + shape.width - rx * 0.3} ${shape.y + ry * 0.5}
+        Q ${shape.x + shape.width} ${cy} ${shape.x + shape.width - rx * 0.3} ${shape.y + ry * 1.2}
+        Q ${shape.x + shape.width - rx * 0.5} ${shape.y + shape.height} ${cx} ${shape.y + ry * 1.5}
+        Q ${shape.x + rx * 0.5} ${shape.y + shape.height} ${shape.x + rx * 0.3} ${shape.y + ry * 1.2} Z`;
+      let svg = `<g filter="url(#pro-glow-${accentId})" opacity="${opacity}">`;
+      svg += `<path d="${cloudPath}" fill="url(#pro-grad-${accentId})" stroke="${accent}" stroke-width="${strokeWidth}" stroke-opacity="0.7"/>`;
+      if (shape.label) {
+        const fontSize = calcFontSize(shape.label, shape.width * 0.6, shape.height * 0.5);
+        svg += renderProText(cx, cy, shape.label, fontSize, fontFamily);
+      }
+      svg += '</g>';
+      return svg;
+    }
+
+    case 'hexagon': {
+      const cx = shape.x + shape.width / 2;
+      const cy = shape.y + shape.height / 2;
+      const inset = shape.width * 0.25;
+      const points = `${shape.x + inset},${shape.y} ${shape.x + shape.width - inset},${shape.y} ${shape.x + shape.width},${cy} ${shape.x + shape.width - inset},${shape.y + shape.height} ${shape.x + inset},${shape.y + shape.height} ${shape.x},${cy}`;
+      let svg = `<g filter="url(#pro-glow-${accentId})" opacity="${opacity}">`;
+      svg += `<polygon points="${points}" fill="url(#pro-grad-${accentId})" stroke="${accent}" stroke-width="${strokeWidth}" stroke-opacity="0.7"/>`;
+      if (shape.label) {
+        const fontSize = calcFontSize(shape.label, shape.width * 0.5, shape.height * 0.7);
+        svg += renderProText(cx, cy, shape.label, fontSize, fontFamily);
+      }
+      svg += '</g>';
+      return svg;
+    }
+
+    case 'document': {
+      const waveH = shape.height * 0.08;
+      const docPath = `M ${shape.x} ${shape.y} L ${shape.x + shape.width} ${shape.y} L ${shape.x + shape.width} ${shape.y + shape.height - waveH} Q ${shape.x + shape.width * 0.75} ${shape.y + shape.height + waveH} ${shape.x + shape.width * 0.5} ${shape.y + shape.height - waveH} Q ${shape.x + shape.width * 0.25} ${shape.y + shape.height - waveH * 3} ${shape.x} ${shape.y + shape.height - waveH} Z`;
+      let svg = `<g filter="url(#pro-glow-${accentId})" opacity="${opacity}">`;
+      svg += `<path d="${docPath}" fill="url(#pro-grad-${accentId})" stroke="${accent}" stroke-width="${strokeWidth}" stroke-opacity="0.7"/>`;
+      if (shape.label) {
+        const fontSize = calcFontSize(shape.label, shape.width * 0.8, shape.height * 0.6);
+        svg += renderProText(shape.x + shape.width / 2, shape.y + shape.height * 0.4, shape.label, fontSize, fontFamily);
+      }
+      svg += '</g>';
+      return svg;
+    }
+
+    case 'person': {
+      const headR = Math.min(shape.width, shape.height) * 0.18;
+      const cx = shape.x + shape.width / 2;
+      const headY = shape.y + headR + 5;
+      let svg = `<g filter="url(#pro-glow-${accentId})" opacity="${opacity}">`;
+      svg += `<circle cx="${cx}" cy="${headY}" r="${headR}" fill="none" stroke="${accent}" stroke-width="${strokeWidth}" stroke-opacity="0.7"/>`;
+      svg += `<line x1="${cx}" y1="${headY + headR}" x2="${cx}" y2="${shape.y + shape.height * 0.6}" stroke="${accent}" stroke-width="${strokeWidth}" stroke-opacity="0.7"/>`;
+      svg += `<line x1="${shape.x + shape.width * 0.15}" y1="${shape.y + shape.height * 0.35}" x2="${shape.x + shape.width * 0.85}" y2="${shape.y + shape.height * 0.35}" stroke="${accent}" stroke-width="${strokeWidth}" stroke-opacity="0.7"/>`;
+      svg += `<line x1="${cx}" y1="${shape.y + shape.height * 0.6}" x2="${shape.x + shape.width * 0.2}" y2="${shape.y + shape.height}" stroke="${accent}" stroke-width="${strokeWidth}" stroke-opacity="0.7"/>`;
+      svg += `<line x1="${cx}" y1="${shape.y + shape.height * 0.6}" x2="${shape.x + shape.width * 0.8}" y2="${shape.y + shape.height}" stroke="${accent}" stroke-width="${strokeWidth}" stroke-opacity="0.7"/>`;
+      if (shape.label) {
+        svg += `<text x="${cx}" y="${shape.y + shape.height + 18}" text-anchor="middle" font-family="${fontFamily}" font-size="12" fill="#e2e8f0" font-weight="500">${escapeXml(shape.label)}</text>`;
+      }
+      svg += '</g>';
+      return svg;
+    }
+
+    case 'callout': {
+      const px = shape.pointerX ?? shape.x + shape.width * 0.2;
+      const py = shape.pointerY ?? shape.y + shape.height + 20;
+      const r = 12;
+      const calloutPath = `M ${shape.x + r} ${shape.y} L ${shape.x + shape.width - r} ${shape.y} Q ${shape.x + shape.width} ${shape.y} ${shape.x + shape.width} ${shape.y + r} L ${shape.x + shape.width} ${shape.y + shape.height - r} Q ${shape.x + shape.width} ${shape.y + shape.height} ${shape.x + shape.width - r} ${shape.y + shape.height} L ${shape.x + shape.width * 0.35} ${shape.y + shape.height} L ${px} ${py} L ${shape.x + shape.width * 0.15} ${shape.y + shape.height} L ${shape.x + r} ${shape.y + shape.height} Q ${shape.x} ${shape.y + shape.height} ${shape.x} ${shape.y + shape.height - r} L ${shape.x} ${shape.y + r} Q ${shape.x} ${shape.y} ${shape.x + r} ${shape.y} Z`;
+      let svg = `<g filter="url(#pro-glow-${accentId})" opacity="${opacity}">`;
+      svg += `<path d="${calloutPath}" fill="url(#pro-grad-${accentId})" stroke="${accent}" stroke-width="${strokeWidth}" stroke-opacity="0.7"/>`;
+      if (shape.label) {
+        const fontSize = calcFontSize(shape.label, shape.width * 0.8, shape.height * 0.7);
+        svg += renderProText(shape.x + shape.width / 2, shape.y + shape.height / 2, shape.label, fontSize, fontFamily);
+      }
+      svg += '</g>';
+      return svg;
+    }
+
+    default:
+      return '';
+  }
+}
+
+// Render text in pro style (light text on dark backgrounds)
+function renderProText(cx: number, cy: number, text: string, fontSize: number, fontFamily: string): string {
+  const lines = text.split('\n');
+  const lineHeight = fontSize * 1.3;
+  const totalHeight = lines.length * lineHeight;
+  const startY = cy - totalHeight / 2 + lineHeight / 2;
+
+  return lines.map((line, i) =>
+    `<text x="${cx}" y="${startY + i * lineHeight}" text-anchor="middle" dominant-baseline="middle" font-family="${fontFamily}" font-size="${fontSize}" fill="#e2e8f0" font-weight="500">${escapeXml(line)}</text>`
+  ).join('');
+}
+
+// Generate corner accents for pro mode
+function generateCornerAccents(vx: number, vy: number, vw: number, vh: number): string {
+  const m = 15; // margin from edge
+  const len = 30; // line length
+  const x1 = vx + m, y1 = vy + m;
+  const x2 = vx + vw - m, y2 = vy + vh - m;
+
+  return `
+  <path d="M${x1},${y1 + len} L${x1},${y1} L${x1 + len},${y1}" stroke="#00ff88" stroke-width="1.5" stroke-opacity="0.15" stroke-linecap="round" fill="none"/>
+  <path d="M${x2 - len},${y1} L${x2},${y1} L${x2},${y1 + len}" stroke="#00ff88" stroke-width="1.5" stroke-opacity="0.15" stroke-linecap="round" fill="none"/>
+  <path d="M${x1},${y2 - len} L${x1},${y2} L${x1 + len},${y2}" stroke="#00ff88" stroke-width="1.5" stroke-opacity="0.15" stroke-linecap="round" fill="none"/>
+  <path d="M${x2 - len},${y2} L${x2},${y2} L${x2},${y2 - len}" stroke="#00ff88" stroke-width="1.5" stroke-opacity="0.15" stroke-linecap="round" fill="none"/>`;
+}
+
 // Render multiline text centered
 function renderMultilineText(cx: number, cy: number, text: string, fontSize: number, fill: string, cleanStyle: boolean = false): string {
   const lines = text.split('\n');
@@ -831,7 +1230,8 @@ export function renderToSvg(state: CanvasState, options: RenderOptions = {}): st
   
   const rand = seededRandom(seed);
   const darkMode = options.darkMode ?? false;
-  const bgColor = darkMode ? '#1a1a2e' : (state.backgroundColor || '#ffffff');
+  const isPro = options.style === 'pro';
+  const bgColor = isPro ? '#1a1a2e' : (darkMode ? '#1a1a2e' : (state.backgroundColor || '#ffffff'));
   
   // Calculate viewBox from shape bounds (infinite canvas approach)
   const bounds = calculateBounds(state.shapes, 500);
@@ -846,17 +1246,38 @@ export function renderToSvg(state: CanvasState, options: RenderOptions = {}): st
   
   const cleanStyle = options.style === 'clean';
   
-  let shapes = '';
-  for (const shape of state.shapes) {
-    shapes += renderShape(shape, rand, roughness, darkMode, cleanStyle);
-  }
-  
   // Background rect extends far beyond viewBox for infinite canvas feel
   const bgPad = 10000;
   const bgX = vx - bgPad;
   const bgY = vy - bgPad;
   const bgW = vw + bgPad * 2;
   const bgH = vh + bgPad * 2;
+  
+  // Pro mode rendering
+  if (isPro) {
+    const defs = generateProDefs(state.shapes);
+    let shapes = '';
+    for (const shape of state.shapes) {
+      shapes += renderProShape(shape, true);
+    }
+    const corners = generateCornerAccents(vx, vy, vw, vh);
+    
+    return `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="${vx} ${vy} ${vw} ${vh}" font-family="-apple-system, system-ui, 'Segoe UI', sans-serif">
+  <defs>${defs}
+  </defs>
+  <rect x="${bgX}" y="${bgY}" width="${bgW}" height="${bgH}" fill="url(#pro-bgGrad)"/>
+  <rect x="${bgX}" y="${bgY}" width="${bgW}" height="${bgH}" fill="url(#pro-grid)"/>
+  ${shapes}
+  ${corners}
+</svg>`;
+  }
+  
+  // Standard rendering (rough or clean)
+  let shapes = '';
+  for (const shape of state.shapes) {
+    shapes += renderShape(shape, rand, roughness, darkMode, cleanStyle);
+  }
   
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="${vx} ${vy} ${vw} ${vh}">
